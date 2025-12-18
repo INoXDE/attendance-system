@@ -26,13 +26,16 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://root:1234@db:3306/attendance_db
 
-  nginx:
+nginx:
     image: nginx:latest
     container_name: attendance_nginx
     ports:
-      - "80:80" # 웹 기본 포트 (http://inoxde.com)
+      - "80:80"
+      - "443:443" # [추가] HTTPS 포트 개방
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      # [추가] 서버(Host)의 인증서 폴더를 컨테이너 내부로 연결 (읽기 전용)
+      - /etc/letsencrypt:/etc/letsencrypt:ro 
     depends_on:
       - app
 
