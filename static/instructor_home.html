@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교수용 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="d-flex justify-content-between mb-4">
+            <h3>🏫 담당 강의 목록</h3>
+            <button onclick="logout()" class="btn btn-outline-secondary">로그아웃</button>
+        </div>
+        <div class="row" id="courseList">
+            </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const res = await fetch('/instructor/dashboard');
+            if (res.ok) {
+                const courses = await res.json();
+                const listDiv = document.getElementById('courseList');
+                
+                courses.forEach(c => {
+                    listDiv.innerHTML += `
+                        <div class="col-md-4 mb-3">
+                            <div class="card shadow-sm h-100" style="cursor:pointer;" onclick="location.href='/static/instructor_course.html?id=${c.id}'">
+                                <div class="card-body">
+                                    <h5 class="card-title fw-bold">${c.title}</h5>
+                                    <p class="card-text text-muted">${c.semester}학기</p>
+                                    <button class="btn btn-primary w-100 mt-2">관리하기</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                alert("권한이 없습니다.");
+                location.href = '/';
+            }
+        });
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

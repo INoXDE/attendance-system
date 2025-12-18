@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>교수용 출석 관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold">📊 출석 리포트</h2>
+            <button onclick="logout()" class="btn btn-secondary">로그아웃</button>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="m-0 fw-bold text-primary" id="courseTitle">강의 로딩 중...</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>이름</th>
+                            <th>총 수업</th>
+                            <th>출석(공결)</th>
+                            <th>출석률</th>
+                            <th>상태</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentList">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const COURSE_ID = 1; // 1번 강의 기준
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 리포트 API 호출 (PDF source: 64, 65)
+                const res = await fetch(`/courses/${COURSE_ID}/report`);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('courseTitle').textContent = data.course_title;
+                    
+                    const tbody = document.getElementById('studentList');
+                    data.reports.forEach(r => {
+                        // 출석률에 따른 색상 구분 (위험군 표시)
+                        let badgeClass = "bg-success";
+                        let statusText = "정상";
+                        if (r.attendance_rate < 70) { 
+                            badgeClass = "bg-danger"; 
+                            statusText = "위험"; 
+                        } else if (r.attendance_rate < 90) { 
+                            badgeClass = "bg-warning text-dark"; 
+                            statusText = "경고"; 
+                        }
+
+                        tbody.innerHTML += `
+                            <tr>
+                                <td class="fw-bold">${r.student_name}</td>
+                                <td>${r.total_sessions}회</td>
+                                <td>${r.attended_count}회</td>
+                                <td class="fw-bold">${r.attendance_rate}%</td>
+                                <td><span class="badge ${badgeClass}">${statusText}</span></td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    alert("교수 권한이 필요합니다.");
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        });
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

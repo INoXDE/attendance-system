@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inoxde - 학생 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .course-card { 
+            border: none; border-radius: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+            margin-bottom: 15px; cursor: pointer; transition: transform 0.2s;
+        }
+        .course-card:active { transform: scale(0.98); }
+        .progress { height: 8px; border-radius: 4px; background-color: #e9ecef; }
+        .header-area { background-color: white; padding: 20px 20px 10px 20px; border-bottom: 1px solid #eee; margin-bottom: 20px;}
+    </style>
+</head>
+<body>
+    <div class="header-area sticky-top">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="fw-bold m-0">안녕하세요, <span id="userName" class="text-primary">학생</span>님</h5>
+                <small class="text-muted">오늘도 힘찬 하루 되세요!</small>
+            </div>
+            <button onclick="logout()" class="btn btn-sm btn-light border">로그아웃</button>
+        </div>
+    </div>
+
+    <div class="container pb-5">
+        <h6 class="text-muted fw-bold mb-3 px-1">수강 중인 강의</h6>
+        <div id="courseList">
+            <div class="text-center py-5 text-muted">로딩 중...</div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadUserInfo();
+            await loadDashboard();
+        });
+
+        async function loadUserInfo() {
+            try {
+                const res = await fetch('/users/me');
+                if(res.ok) {
+                    const user = await res.json();
+                    document.getElementById('userName').textContent = user.name;
+                } else { window.location.href = '/'; }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadDashboard() {
+            try {
+                const res = await fetch('/student/dashboard');
+                if (res.ok) {
+                    const data = await res.json();
+                    const listDiv = document.getElementById('courseList');
+                    listDiv.innerHTML = ''; // 초기화
+
+                    data.forEach((course, index) => {
+                        const myStat = course.reports[0]; // 내 통계
+                        // 강의 ID를 가져오는 법이 현재 API 구조상 조금 복잡하므로 
+                        // 실제로는 Course ID도 response에 포함해야 합니다. 
+                        // 여기서는 편의상 순서대로 1, 2... 라고 가정하거나 API 수정이 필요합니다.
+                        // *임시조치: 테스트용으로 1번 고정하고, 실제론 백엔드에서 id를 줘야 함*
+                        const courseId = index + 1; 
+
+                        listDiv.innerHTML += `
+                            <div class="card course-card" onclick="location.href='/static/student_detail.html?id=${courseId}'">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <h6 class="fw-bold mb-0">${course.course_title}</h6>
+                                        <span class="badge bg-light text-dark border">2025-2</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between small text-muted mb-1">
+                                        <span>나의 출석률</span>
+                                        <span class="fw-bold text-primary">${myStat.attendance_rate}%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-primary" style="width: ${myStat.attendance_rate}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

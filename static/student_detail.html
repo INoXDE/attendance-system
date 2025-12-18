@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>강의 상세</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .session-item { background: white; border-radius: 12px; padding: 15px; margin-bottom: 10px; border: 1px solid #eee; display: flex; align-items: center; justify-content: space-between;}
+        .status-badge { width: 60px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="bg-white sticky-top border-bottom p-3 mb-3 d-flex align-items-center">
+        <a href="/static/student_home.html" class="btn btn-sm btn-light me-2">←</a>
+        <h5 class="m-0 fw-bold">출결 상세 조회</h5>
+    </div>
+
+    <div class="container">
+        <div id="sessionList">
+            <div class="text-center mt-5 text-muted">데이터를 불러오는 중...</div>
+        </div>
+    </div>
+
+<script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const COURSE_ID = urlParams.get('id') || 1;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadSessions();
+        });
+
+        async function loadSessions() {
+            try {
+                const res = await fetch(`/student/courses/${COURSE_ID}/sessions`);
+                const sessions = await res.json();
+                const listDiv = document.getElementById('sessionList');
+                listDiv.innerHTML = '';
+
+                if (sessions.length === 0) {
+                    listDiv.innerHTML = '<div class="text-center mt-5 text-muted">등록된 수업이 없습니다.</div>';
+                    return;
+                }
+
+                sessions.forEach(s => {
+                    const dateObj = new Date(s.session_date);
+                    const weekDays = ['일','월','화','수','목','금','토'];
+                    const dateStr = `${dateObj.getMonth()+1}.${dateObj.getDate()} (${weekDays[dateObj.getDay()]}) ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2,'0')}`;
+
+                    let statusHtml = '', actionHtml = '';
+
+                    // 상태 배지
+                    if (s.my_status === 1) statusHtml = '<span class="badge bg-success status-badge">출석</span>';
+                    else if (s.my_status === 2) statusHtml = '<span class="badge bg-warning text-dark status-badge">지각</span>';
+                    else if (s.my_status === 3) statusHtml = '<span class="badge bg-danger status-badge">결석</span>';
+                    else if (s.my_status === 4) statusHtml = '<span class="badge bg-primary status-badge">공결</span>';
+                    else statusHtml = '<span class="badge bg-secondary status-badge">미정</span>';
+
+                    // 버튼 로직 [수정됨]
+                    if (s.is_open && s.my_status === 0) {
+                        // 클릭 시 메소드(AUTH_CODE 등)를 함께 전달
+                        actionHtml = `<button class="btn btn-primary btn-sm" onclick="doAttend(${s.id}, '${s.attendance_method}')">출석하기</button>`;
+                        statusHtml = '<span class="badge bg-info text-dark status-badge">진행중</span>';
+                    } else if (s.my_status === 1) {
+                        actionHtml = '<small class="text-success fw-bold">출석완료</small>';
+                    } else if (s.my_status === 3) {
+                         actionHtml = `<button class="btn btn-outline-secondary btn-sm" onclick="applyExcuse(${s.id})">공결신청</button>`;
+                    }
+
+                    listDiv.innerHTML += `
+                        <div class="session-item">
+                            <div>
+                                <h6 class="m-0 fw-bold">${s.week_number}주차 수업</h6>
+                                <small class="text-muted">${dateStr}</small>
+                                <div class="mt-1">${statusHtml}</div>
+                            </div>
+                            <div>${actionHtml}</div>
+                        </div>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        // [수정된 함수] 출석 요청
+        async function doAttend(sessionId, method) {
+            let code = "";
+            
+            // 인증번호 방식이면 입력창 띄우기
+            if (method === 'AUTH_CODE') {
+                code = prompt("교수님이 알려주신 인증번호 4자리를 입력하세요:");
+                if (code === null) return; // 취소 누름
+                if (code.trim() === "") { alert("번호를 입력해주세요."); return; }
+            } else {
+                if(!confirm("출석체크 하시겠습니까?")) return;
+            }
+
+            try {
+                // URL에 ?code=1234 형태로 붙여서 전송
+                const url = `/student/sessions/${sessionId}/attend` + (code ? `?code=${code}` : "");
+                
+                const res = await fetch(url, { method: 'POST' });
+                if (res.ok) {
+                    alert("✅ 출석되었습니다!");
+                    loadSessions();
+                } else {
+                    const err = await res.json();
+                    alert("실패: " + err.detail);
+                }
+            } catch (e) { alert("통신 오류"); }
+        }
+
+        function applyExcuse(sessionId) {
+            alert("공결 신청 기능은 다음 업데이트에 포함됩니다.");
+        }
+    </script>
+</body>
+</html>

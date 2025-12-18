@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>강의 관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .auth-code-box { font-size: 3rem; letter-spacing: 10px; font-weight: bold; color: #4a90e2; border: 2px dashed #4a90e2; padding: 20px; border-radius: 10px; background: #f8f9fa; }
+        .nav-tabs .nav-link.active { font-weight: bold; color: #4a90e2; border-top: 3px solid #4a90e2; }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <a href="/static/instructor_home.html" class="btn btn-outline-secondary">← 강의 목록</a>
+            <span class="badge bg-primary fs-6" id="courseNameBadge">강의명 로딩중</span>
+        </div>
+
+        <div class="row">
+            <div class="col-md-3">
+                <h6 class="text-muted fw-bold mb-3">수업 주차 선택</h6>
+                <div class="list-group shadow-sm" id="sessionList">
+                    </div>
+            </div>
+
+            <div class="col-md-9">
+                <div class="card shadow-sm" id="mainCard" style="display:none;">
+                    <div class="card-header bg-white">
+                        <ul class="nav nav-tabs card-header-tabs">
+                            <li class="nav-item">
+                                <a class="nav-link active" href="#" onclick="switchTab('control')">📡 수업 제어</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" onclick="switchTab('roster')">📋 학생 명부 & 수정</a>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="card-body p-4">
+                        <h4 class="mb-4 fw-bold" id="panelTitle">N주차 수업</h4>
+
+                        <div id="tab-control">
+                            <div class="row text-center">
+                                <div class="col-md-6 mb-4 border-end">
+                                    <label class="form-label fw-bold text-muted">출석 방식</label>
+                                    <div class="d-flex justify-content-center gap-2 mb-3">
+                                        <input type="radio" class="btn-check" name="method" id="m1" value="ELECTRONIC" checked>
+                                        <label class="btn btn-outline-primary" for="m1">📱 전자출결</label>
+                                        <input type="radio" class="btn-check" name="method" id="m2" value="AUTH_CODE">
+                                        <label class="btn btn-outline-primary" for="m2">🔢 인증번호</label>
+                                    </div>
+                                    <button id="btnToggle" class="btn btn-success w-100 py-3 fw-bold" onclick="toggleAttendance()">
+                                        출석 시작 (OPEN)
+                                    </button>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label class="form-label fw-bold text-muted">실시간 현황</label>
+                                    <h1 class="display-4 fw-bold mb-0 text-primary">
+                                        <span id="liveAttended">0</span>/<span id="liveTotal">0</span>
+                                    </h1>
+                                </div>
+                            </div>
+                            
+                            <div id="authCodeArea" class="text-center mt-3" style="display:none;">
+                                <div class="auth-code-box" id="authCodeDisplay">----</div>
+                                <p class="text-muted mt-2">학생들에게 이 번호를 공유하세요</p>
+                            </div>
+                        </div>
+
+                        <div id="tab-roster" style="display:none;">
+                            <div class="d-flex justify-content-end mb-2">
+                                <small class="text-muted">* 상태를 변경하면 즉시 저장됩니다.</small>
+                            </div>
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>이름</th>
+                                        <th>학번/이메일</th>
+                                        <th>상태 변경</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rosterTable">
+                                    </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+                
+                <div id="emptyState" class="text-center py-5 text-muted">
+                    <h5>👈 왼쪽에서 관리할 수업을 선택해주세요</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const COURSE_ID = urlParams.get('id') || 1;
+        let currentSessionId = null;
+        let refreshTimer = null;
+
+        document.addEventListener('DOMContentLoaded', loadSessions);
+
+        // 탭 전환 로직
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (tabName === 'control') {
+                document.getElementById('tab-control').style.display = 'block';
+                document.getElementById('tab-roster').style.display = 'none';
+            } else {
+                document.getElementById('tab-control').style.display = 'none';
+                document.getElementById('tab-roster').style.display = 'block';
+                loadRoster(); // 탭 누를 때 명부 새로고침
+            }
+        }
+
+        async function loadSessions() {
+            const res = await fetch(`/instructor/courses/${COURSE_ID}/sessions`);
+            const sessions = await res.json();
+            const list = document.getElementById('sessionList');
+            list.innerHTML = '';
+            
+            sessions.forEach(s => {
+                const badge = s.is_open ? '<span class="badge bg-success rounded-pill">OPEN</span>' : '';
+                list.innerHTML += `
+                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                        onclick="selectSession(${s.id}, ${s.week_number}, ${s.is_open}, '${s.attendance_method}')">
+                        ${s.week_number}주차 수업
+                        ${badge}
+                    </button>
+                `;
+            });
+        }
+
+        function selectSession(id, week, isOpen, method) {
+            currentSessionId = id;
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('mainCard').style.display = 'block';
+            document.getElementById('panelTitle').textContent = `${week}주차 수업 관리`;
+            
+            // UI 초기화
+            document.querySelector(`input[name="method"][value="${method}"]`).checked = true;
+            updateControlUI(isOpen, method);
+            
+            // 타이머 재설정
+            if (refreshTimer) clearInterval(refreshTimer);
+            loadLiveStat();
+            refreshTimer = setInterval(loadLiveStat, 3000);
+            
+            // 명부 탭이면 명부도 로드
+            if(document.getElementById('tab-roster').style.display === 'block') {
+                loadRoster();
+            }
+        }
+
+        // --- 탭 1: 제어 로직 ---
+        async function toggleAttendance() {
+            const btn = document.getElementById('btnToggle');
+            const isOpening = btn.classList.contains('btn-success');
+            const method = document.querySelector('input[name="method"]:checked').value;
+
+            const res = await fetch(`/sessions/${currentSessionId}/status?is_open=${isOpening}&method=${method}`, { method: 'PATCH' });
+            if (res.ok) {
+                const data = await res.json();
+                updateControlUI(isOpening, method, data.auth_code);
+                loadSessions(); // 사이드바 갱신
+            }
+        }
+
+        function updateControlUI(isOpen, method, authCode = null) {
+            const btn = document.getElementById('btnToggle');
+            const codeArea = document.getElementById('authCodeArea');
+
+            if (isOpen) {
+                btn.textContent = "마감하기 (CLOSE)";
+                btn.className = "btn btn-danger w-100 py-3 fw-bold";
+                if (method === 'AUTH_CODE') {
+                    codeArea.style.display = 'block';
+                    if (authCode) document.getElementById('authCodeDisplay').textContent = authCode;
+                } else { codeArea.style.display = 'none'; }
+            } else {
+                btn.textContent = "출석 시작 (OPEN)";
+                btn.className = "btn btn-success w-100 py-3 fw-bold";
+                codeArea.style.display = 'none';
+            }
+        }
+
+        async function loadLiveStat() {
+            if (!currentSessionId) return;
+            const res = await fetch(`/sessions/${currentSessionId}/stat`);
+            const data = await res.json();
+            document.getElementById('liveAttended').textContent = data.attended;
+            document.getElementById('liveTotal').textContent = data.total;
+            if (data.auth_code) document.getElementById('authCodeDisplay').textContent = data.auth_code;
+        }
+
+        // --- 탭 2: 명부 로직 (직권 수정) ---
+        async function loadRoster() {
+            if (!currentSessionId) return;
+            const res = await fetch(`/instructor/sessions/${currentSessionId}/attendances`);
+            const roster = await res.json();
+            const tbody = document.getElementById('rosterTable');
+            tbody.innerHTML = '';
+
+            roster.forEach(student => {
+                // 상태 선택 드롭다운 생성
+                const options = [
+                    {val:0, label:'미정', color:'#6c757d'},
+                    {val:1, label:'출석', color:'#198754'},
+                    {val:2, label:'지각', color:'#ffc107'},
+                    {val:3, label:'결석', color:'#dc3545'},
+                    {val:4, label:'공결', color:'#0d6efd'}
+                ];
+                
+                let selectHtml = `<select class="form-select form-select-sm" onchange="changeStatus(${student.student_id}, this.value)" style="width:100px;">`;
+                options.forEach(opt => {
+                    const selected = student.status === opt.val ? 'selected' : '';
+                    selectHtml += `<option value="${opt.val}" ${selected}>${opt.label}</option>`;
+                });
+                selectHtml += `</select>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="fw-bold">${student.student_name}</td>
+                        <td class="text-muted small">${student.email}</td>
+                        <td>${selectHtml}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function changeStatus(studentId, newStatus) {
+            try {
+                const res = await fetch(`/instructor/sessions/${currentSessionId}/attendances`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ student_id: studentId, status: parseInt(newStatus) })
+                });
+                if(res.ok) {
+                    // 성공 시 별도 알림 없이 조용히 반영 (UX)
+                    console.log("상태 변경 완료");
+                    loadLiveStat(); // 실시간 숫자 갱신
+                } else {
+                    alert("변경 실패");
+                }
+            } catch(e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>
