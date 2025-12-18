@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>시스템 관리자</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-link.active { font-weight: bold; background-color: #f8f9fa !important; border-bottom: 2px solid #0d6efd !important; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-dark px-3">
+        <a class="navbar-brand" href="#">⚙️ Admin Dashboard</a>
+        <button onclick="logout()" class="btn btn-sm btn-outline-light">로그아웃</button>
+    </nav>
+
+    <div class="container py-4">
+        <div class="alert alert-info d-flex justify-content-between align-items-center" id="systemStatus">
+            <span>시스템 상태 확인 중...</span>
+            <span class="badge bg-light text-dark" id="serverTime"></span>
+        </div>
+
+        <ul class="nav nav-tabs bg-white rounded-top shadow-sm px-2 pt-2">
+            <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-dept">🏢 학과 관리</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-user">👥 사용자 등록</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-course">📚 강좌 개설</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-log">📜 감사 로그</a></li>
+        </ul>
+
+        <div class="tab-content bg-white shadow-sm p-4 rounded-bottom">
+            
+            <div class="tab-pane fade show active" id="tab-dept">
+                <div class="input-group mb-3">
+                    <input type="text" id="newDeptName" class="form-control" placeholder="새 학과 이름 (예: 컴퓨터공학과)">
+                    <button class="btn btn-primary" onclick="createDept()">추가하기</button>
+                </div>
+                <h6 class="text-muted">등록된 학과 목록</h6>
+                <ul class="list-group" id="deptList"></ul>
+            </div>
+
+            <div class="tab-pane fade" id="tab-user">
+                <form onsubmit="createUser(); return false;">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label>이메일</label>
+                            <input type="email" id="uEmail" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label>이름</label>
+                            <input type="text" id="uName" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label>비밀번호</label>
+                            <input type="text" id="uPw" class="form-control" value="1234">
+                        </div>
+                        <div class="col-md-6">
+                            <label>권한</label>
+                            <select id="uRole" class="form-select">
+                                <option value="STUDENT">학생</option>
+                                <option value="INSTRUCTOR">교수</option>
+                                <option value="ADMIN">관리자</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label>소속 학과</label>
+                            <select id="uDept" class="form-select"><option value="">선택하세요</option></select>
+                        </div>
+                        <div class="col-md-6">
+                            <label>학번 (학생인 경우)</label>
+                            <input type="text" id="uNum" class="form-control">
+                        </div>
+                        <div class="col-12 mt-3">
+                            <button type="submit" class="btn btn-success w-100">사용자 생성</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="tab-pane fade" id="tab-course">
+                <form onsubmit="createCourse(); return false;">
+                    <div class="mb-3">
+                        <label>강의명</label>
+                        <input type="text" id="cTitle" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>학기</label>
+                        <input type="text" id="cSem" class="form-control" value="2025-2">
+                    </div>
+                    <div class="mb-3">
+                        <label>개설 학과</label>
+                        <select id="cDept" class="form-select"><option value="">선택하세요</option></select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">강의 생성 (17주차 자동)</button>
+                </form>
+            </div>
+
+            <div class="tab-pane fade" id="tab-log">
+                <button class="btn btn-sm btn-secondary mb-2" onclick="loadLogs()">새로고침</button>
+                <div style="height:400px; overflow-y:auto; font-family:monospace; background:#f8f9fa; padding:10px;">
+                    <table class="table table-sm table-striped">
+                        <thead><tr><th>시간</th><th>행위자</th><th>대상</th><th>액션</th><th>상세</th></tr></thead>
+                        <tbody id="logList"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSystemStatus();
+            loadDepts();
+            loadLogs();
+        });
+
+        // 시스템 상태
+        async function loadSystemStatus() {
+            try {
+                const res = await fetch('/admin/system-status');
+                if(!res.ok) return;
+                const data = await res.json();
+                document.getElementById('systemStatus').innerHTML = `
+                    <strong>🟢 시스템 정상 가동 중</strong> 
+                    (DB: ${data.database}, 유저: ${data.users}명, 강의: ${data.courses}개)
+                `;
+                document.getElementById('serverTime').textContent = new Date(data.server_time).toLocaleString();
+            } catch(e) {
+                document.getElementById('systemStatus').className = "alert alert-danger";
+                document.getElementById('systemStatus').textContent = "🔴 시스템 연결 오류";
+            }
+        }
+
+        // 학과 관리
+        async function loadDepts() {
+            const res = await fetch('/admin/departments');
+            const depts = await res.json();
+            const list = document.getElementById('deptList');
+            const selects = [document.getElementById('uDept'), document.getElementById('cDept')];
+            
+            list.innerHTML = '';
+            selects.forEach(s => s.innerHTML = '<option value="">선택하세요</option>');
+
+            depts.forEach(d => {
+                list.innerHTML += `<li class="list-group-item">${d.name} <span class="badge bg-secondary float-end">ID: ${d.id}</span></li>`;
+                selects.forEach(s => s.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+            });
+        }
+
+        async function createDept() {
+            const name = document.getElementById('newDeptName').value;
+            if(!name) return alert("학과명을 입력하세요");
+            
+            const res = await fetch('/admin/departments', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            });
+            if(res.ok) { alert("등록 완료"); loadDepts(); document.getElementById('newDeptName').value=''; }
+        }
+
+        // 사용자 생성
+        async function createUser() {
+            const data = {
+                email: document.getElementById('uEmail').value,
+                password: document.getElementById('uPw').value,
+                name: document.getElementById('uName').value,
+                role: document.getElementById('uRole').value,
+                department_id: document.getElementById('uDept').value || null,
+                student_number: document.getElementById('uNum').value || null
+            };
+            const res = await fetch('/admin/users', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if(res.ok) { alert("사용자 생성 완료!"); }
+            else { alert("생성 실패 (이메일 중복 등 확인)"); }
+        }
+
+        // 강의 생성
+        async function createCourse() {
+            const data = {
+                title: document.getElementById('cTitle').value,
+                semester: document.getElementById('cSem').value,
+                department_id: document.getElementById('cDept').value || null
+            };
+            const res = await fetch('/admin/courses', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if(res.ok) { alert("강의 개설 및 17주차 생성 완료!"); }
+            else { alert("개설 실패"); }
+        }
+
+        // 감사 로그
+        async function loadLogs() {
+            const res = await fetch('/admin/audit-logs');
+            const logs = await res.json();
+            const tbody = document.getElementById('logList');
+            tbody.innerHTML = '';
+            logs.forEach(l => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${new Date(l.created_at).toLocaleString()}</td>
+                        <td>User ${l.actor_id}</td>
+                        <td>${l.target_type} ${l.target_id}</td>
+                        <td>${l.action}</td>
+                        <td>${l.details || '-'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

@@ -9,12 +9,24 @@ class UserRole(str, Enum):
     INSTRUCTOR = "INSTRUCTOR"
     STUDENT = "STUDENT"
 
+# [NEW] 학과 정보
+class DepartmentCreate(BaseModel):
+    name: str
+
+class DepartmentResponse(BaseModel):
+    id: int
+    name: str
+    class Config:
+        from_attributes = True
+
+# 회원가입/생성 (학과 ID 추가)
 class UserCreate(BaseModel):
     email: str
     password: str
     name: str
     student_number: Optional[str] = None
     role: UserRole
+    department_id: Optional[int] = None # [NEW]
 
 class UserResponse(BaseModel):
     id: int
@@ -22,30 +34,34 @@ class UserResponse(BaseModel):
     name: str
     student_number: Optional[str] = None
     role: str
+    department_id: Optional[int] = None
     class Config:
         from_attributes = True
 
+# 강의 생성 (학과 ID 추가)
 class CourseCreate(BaseModel):
     title: str
     semester: str
+    department_id: Optional[int] = None # [NEW]
 
 class CourseResponse(BaseModel):
     id: int
     title: str
     semester: str
     instructor_id: int
+    department_id: Optional[int] = None
     class Config:
         from_attributes = True
 
+# --- 기존 유지 ---
 class SessionCreate(BaseModel):
     week_number: int
     session_date: datetime
     attendance_method: str = "ELECTRONIC"
 
-# [보완] 교수님이 출석 상태 변경할 때 사용
 class AttendanceUpdate(BaseModel):
     student_id: int
-    status: int # 0~4
+    status: int
 
 class AttendanceCreate(BaseModel):
     pass 
@@ -64,14 +80,7 @@ class SessionResponse(BaseModel):
     week_number: int
     session_date: datetime
     is_open: bool
-    class Config:
-        from_attributes = True
-
-class ExcuseResponse(BaseModel):
-    id: int
-    student_id: int
-    reason: str
-    status: str
+    auth_code: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -85,12 +94,13 @@ class CourseReportResponse(BaseModel):
     course_title: str
     reports: List[StudentReport]
 
-# [보완] 관리자 감사 로그 조회용
+# [NEW] 감사 로그 응답용
 class AuditLogResponse(BaseModel):
     id: int
     actor_id: Optional[int]
     target_type: str
     action: str
+    details: Optional[str]
     created_at: datetime
     class Config:
         from_attributes = True
