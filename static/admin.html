@@ -118,16 +118,23 @@
         async function loadSystemStatus() {
             try {
                 const res = await fetch('/admin/system-status');
-                if(!res.ok) return;
+                if(!res.ok) throw new Error("서버 응답 오류"); // 에러 처리를 확실하게
+
                 const data = await res.json();
-                document.getElementById('systemStatus').innerHTML = `
-                    <strong>🟢 시스템 정상 가동 중</strong> 
-                    (DB: ${data.database}, 유저: ${data.users}명, 강의: ${data.courses}개)
+                const timeStr = new Date(data.server_time).toLocaleString();
+
+                // [수정 포인트] innerHTML을 한 번에 갈아끼우도록 변경 (에러 원인 제거)
+                const statusBox = document.getElementById('systemStatus');
+                statusBox.className = "alert alert-success d-flex justify-content-between align-items-center"; // 색상을 초록색(alert-success)으로 변경
+                statusBox.innerHTML = `
+                    <span><strong>🟢 시스템 정상 가동 중</strong> (DB: ${data.database}, 유저: ${data.users}명, 강의: ${data.courses}개)</span>
+                    <span class="badge bg-light text-dark">${timeStr}</span>
                 `;
-                document.getElementById('serverTime').textContent = new Date(data.server_time).toLocaleString();
             } catch(e) {
-                document.getElementById('systemStatus').className = "alert alert-danger";
-                document.getElementById('systemStatus').textContent = "🔴 시스템 연결 오류";
+                console.error(e);
+                const statusBox = document.getElementById('systemStatus');
+                statusBox.className = "alert alert-danger";
+                statusBox.textContent = "🔴 시스템 연결 오류 (새로고침 필요)";
             }
         }
 
