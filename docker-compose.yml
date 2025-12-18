@@ -26,7 +26,7 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://root:1234@db:3306/attendance_db
 
-nginx:
+  nginx:
     image: nginx:latest
     container_name: attendance_nginx
     ports:
