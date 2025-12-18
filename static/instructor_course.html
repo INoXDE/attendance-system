@@ -7,6 +7,9 @@
     <style>
         .auth-code-box { font-size: 3rem; letter-spacing: 10px; font-weight: bold; color: #4a90e2; border: 2px dashed #4a90e2; padding: 20px; border-radius: 10px; background: #f8f9fa; }
         .nav-tabs .nav-link.active { font-weight: bold; color: #4a90e2; border-top: 3px solid #4a90e2; }
+        /* [NEW] 사이드바 아이템 스타일 개선 */
+        .session-btn { text-align: left; }
+        .session-date { font-size: 0.8rem; color: #6c757d; }
     </style>
 </head>
 <body class="bg-light">
@@ -80,7 +83,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="rosterTable">
-                                    </tbody>
+                                </tbody>
                             </table>
                         </div>
 
@@ -102,7 +105,6 @@
 
         document.addEventListener('DOMContentLoaded', loadSessions);
 
-        // 탭 전환 로직
         function switchTab(tabName) {
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
             event.target.classList.add('active');
@@ -113,7 +115,7 @@
             } else {
                 document.getElementById('tab-control').style.display = 'none';
                 document.getElementById('tab-roster').style.display = 'block';
-                loadRoster(); // 탭 누를 때 명부 새로고침
+                loadRoster(); 
             }
         }
 
@@ -124,12 +126,28 @@
             list.innerHTML = '';
             
             sessions.forEach(s => {
-                const badge = s.is_open ? '<span class="badge bg-success rounded-pill">OPEN</span>' : '';
+                const badge = s.is_open ? '<span class="badge bg-success rounded-pill float-end">OPEN</span>' : '';
+                
+                // [핵심] 날짜 계산 로직 추가
+                // DB의 session_date는 "월요일" 기준입니다.
+                const startDate = new Date(s.session_date);
+                const endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 6); // 일요일까지 (+6일)
+
+                // "MM월DD일" 형식으로 변환
+                const format = (d) => `${d.getMonth()+1}월${String(d.getDate()).padStart(2,'0')}일`;
+                const dateStr = `[${format(startDate)} - ${format(endDate)}]`;
+
                 list.innerHTML += `
-                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                    <button class="list-group-item list-group-item-action session-btn" 
                         onclick="selectSession(${s.id}, ${s.week_number}, ${s.is_open}, '${s.attendance_method}')">
-                        ${s.week_number}주차 수업
-                        ${badge}
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <span class="fw-bold">${s.week_number}주차</span>
+                                <div class="session-date">${dateStr}</div>
+                            </div>
+                            ${badge}
+                        </div>
                     </button>
                 `;
             });
@@ -141,22 +159,18 @@
             document.getElementById('mainCard').style.display = 'block';
             document.getElementById('panelTitle').textContent = `${week}주차 수업 관리`;
             
-            // UI 초기화
             document.querySelector(`input[name="method"][value="${method}"]`).checked = true;
             updateControlUI(isOpen, method);
             
-            // 타이머 재설정
             if (refreshTimer) clearInterval(refreshTimer);
             loadLiveStat();
             refreshTimer = setInterval(loadLiveStat, 3000);
             
-            // 명부 탭이면 명부도 로드
             if(document.getElementById('tab-roster').style.display === 'block') {
                 loadRoster();
             }
         }
 
-        // --- 탭 1: 제어 로직 ---
         async function toggleAttendance() {
             const btn = document.getElementById('btnToggle');
             const isOpening = btn.classList.contains('btn-success');
@@ -166,7 +180,7 @@
             if (res.ok) {
                 const data = await res.json();
                 updateControlUI(isOpening, method, data.auth_code);
-                loadSessions(); // 사이드바 갱신
+                loadSessions(); 
             }
         }
 
@@ -197,7 +211,6 @@
             if (data.auth_code) document.getElementById('authCodeDisplay').textContent = data.auth_code;
         }
 
-        // --- 탭 2: 명부 로직 (직권 수정) ---
         async function loadRoster() {
             if (!currentSessionId) return;
             const res = await fetch(`/instructor/sessions/${currentSessionId}/attendances`);
@@ -206,7 +219,6 @@
             tbody.innerHTML = '';
 
             roster.forEach(student => {
-                // 상태 선택 드롭다운 생성
                 const options = [
                     {val:0, label:'미정', color:'#6c757d'},
                     {val:1, label:'출석', color:'#198754'},
@@ -240,9 +252,8 @@
                     body: JSON.stringify({ student_id: studentId, status: parseInt(newStatus) })
                 });
                 if(res.ok) {
-                    // 성공 시 별도 알림 없이 조용히 반영 (UX)
                     console.log("상태 변경 완료");
-                    loadLiveStat(); // 실시간 숫자 갱신
+                    loadLiveStat();
                 } else {
                     alert("변경 실패");
                 }
