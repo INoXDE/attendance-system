@@ -1,20 +1,27 @@
 # models.py
 from sqlalchemy import Column, Integer, String, ForeignKey, Enum, DateTime, Text, Boolean
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship # [NEW] 관계 설정을 위해 추가
 from database import Base
+from datetime import datetime
 
-# 사용자 모델 (PDF 31, 3~6번 항목: 관리자, 교원, 수강생)
+# 1. 사용자 모델 (명세서: 학번, 역할 등)
 class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
-    password = Column(String(255), nullable=False) # 실제론 암호화 필요
+    password = Column(String(255), nullable=False)
     name = Column(String(50), nullable=False)
+    student_number = Column(String(20), nullable=True) # [NEW] 학번 추가 (교수는 null 가능)
     role = Column(Enum('ADMIN', 'INSTRUCTOR', 'STUDENT'), nullable=False)
     created_at = Column(DateTime, default=func.now())
 
-# 강의 모델 (PDF 32, 8번 항목: 2025년 2학기 기준)
+    # 관계 설정 (DB조작 편의성)
+    enrollments = relationship("Enrollment", back_populates="user")
+    attendances = relationship("Attendance", back_populates="student")
+
+# 2. 강의 모델
 class Course(Base):
     __tablename__ = "courses"
 
@@ -23,21 +30,26 @@ class Course(Base):
     semester = Column(String(20), nullable=False) # 예: "2025-2"
     instructor_id = Column(Integer, ForeignKey("users.id"))
 
-# --- models.py 맨 아래에 추가 ---
+    # 관계 설정
+    instructor = relationship("User")
+    sessions = relationship("ClassSession", back_populates="course")
+    enrollments = relationship("Enrollment", back_populates="course")
 
-# 강의 세션(주차) 모델 [cite: 9, 33]
+# 3. 강의 세션(주차) 모델
 class ClassSession(Base):
     __tablename__ = "class_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    week_number = Column(Integer, nullable=False) # 1주차, 2주차...
-    session_date = Column(DateTime, nullable=False) # 수업 날짜
-    attendance_method = Column(Enum('ELECTRONIC', 'AUTH_CODE', 'CALL'), default='ELECTRONIC') # 출석 방식 [cite: 10]
-    auth_code = Column(String(10), nullable=True) # 인증번호
-    is_open = Column(Boolean, default=False) # 출석 시작 여부
+    week_number = Column(Integer, nullable=False)
+    session_date = Column(DateTime, nullable=False)
+    attendance_method = Column(Enum('ELECTRONIC', 'AUTH_CODE', 'CALL'), default='ELECTRONIC')
+    auth_code = Column(String(10), nullable=True)
+    is_open = Column(Boolean, default=False)
 
-# 수강신청 모델 
+    course = relationship("Course", back_populates="sessions")
+
+# 4. 수강신청 모델
 class Enrollment(Base):
     __tablename__ = "enrollments"
 
@@ -46,28 +58,42 @@ class Enrollment(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     joined_at = Column(DateTime, default=func.now())
 
-    # --- models.py 맨 아래에 추가 ---
+    user = relationship("User", back_populates="enrollments")
+    course = relationship("Course", back_populates="enrollments")
 
-# 출석 기록 모델
+# 5. 출석 기록 모델
 class Attendance(Base):
     __tablename__ = "attendances"
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    status = Column(Integer, default=1) # 1: 출석 (기본값)
-    checked_at = Column(DateTime, default=func.now()) # 출석한 시간
+    # [cite_start]0:미정, 1:출석, 2:지각, 3:결석, 4:공결 [cite: 12]
+    status = Column(Integer, default=0) 
+    checked_at = Column(DateTime, default=func.now())
 
-    # --- models.py 맨 아래에 추가 ---
+    student = relationship("User", back_populates="attendances")
 
-# 공결 신청 모델
+# 6. 공결 신청 모델
 class ExcuseRequest(Base):
     __tablename__ = "excuse_requests"
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reason = Column(Text, nullable=False) # 사유
-    file_path = Column(String(255), nullable=True) # 파일 저장 위치
-    status = Column(Enum('PENDING', 'APPROVED', 'REJECTED'), default='PENDING') # 대기, 승인, 반려
-    admin_comment = Column(Text, nullable=True) # 교수님 코멘트
+    reason = Column(Text, nullable=False)
+    file_path = Column(String(255), nullable=True)
+    status = Column(Enum('PENDING', 'APPROVED', 'REJECTED'), default='PENDING')
+    admin_comment = Column(Text, nullable=True)
+
+# [cite_start]7. [NEW] 감사 로그 (Audit Log) - 관리자용 [cite: 29]
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id")) # 변경한 사람 (교수/관리자)
+    target_type = Column(String(50)) # 예: "ATTENDANCE", "COURSE_POLICY"
+    target_id = Column(Integer) # 변경된 대상 ID
+    action = Column(String(50)) # 예: "UPDATE", "DELETE"
+    details = Column(Text) # 변경 내용 상세 (JSON 등)
+    created_at = Column(DateTime, default=func.now())
