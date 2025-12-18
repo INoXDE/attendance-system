@@ -186,15 +186,23 @@ def get_audit_logs(current_user: models.User = Depends(auth.get_current_user), d
     if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
     return db.query(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(100).all()
 
+# main.py (수정할 부분)
 @app.get("/admin/system-status")
 def get_system_status(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
+    
+    # [수정] 변수 기본값 미리 설정 (에러 방지용)
+    user_count = 0
+    course_count = 0
+    db_status = "Error"
+
     try:
         user_count = db.query(models.User).count()
         course_count = db.query(models.Course).count()
         db_status = "Connected"
-    except:
-        db_status = "Error"
+    except Exception as e:
+        print(f"System Status Error: {e}")
+        # 에러가 나도 기본값(0)으로 응답하여 500 에러 방지
         
     return {
         "status": "OK",
@@ -203,7 +211,6 @@ def get_system_status(current_user: models.User = Depends(auth.get_current_user)
         "courses": course_count,
         "server_time": datetime.now()
     }
-
 # ==========================================
 # [3] 교원 영역 (Instructor) - 기존 유지
 # ==========================================
