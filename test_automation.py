@@ -1,63 +1,76 @@
 # test_automation.py
 from database import SessionLocal
 import models
-from datetime import datetime
+import auth
+from datetime import timedelta, datetime
 
 def test_auto_schedule():
-    db = SessionLocal()
     print("🧪 [테스트 시작] 강의 생성 및 주차별 DB 자동 생성 확인")
+    db = SessionLocal()
 
-    # 1. 테스트용 강의 제목 정의
-    test_title = "시스템검증용_자동생성강의"
-    
-    # 혹시 기존에 같은 이름의 테스트 강의가 있다면 삭제 (청소)
-    existing = db.query(models.Course).filter_by(title=test_title).first()
-    if existing:
-        print(f"🧹 기존 테스트 강의 삭제 중... (ID: {existing.id})")
-        # 연관된 세션 삭제
-        db.query(models.ClassSession).filter_by(course_id=existing.id).delete()
-        db.delete(existing)
+    try:
+        # 1. [Fix] 교수님 계정 존재 여부 확인 및 생성
+        # DB가 비어있으면 강의를 만들 수 없으므로, 임시 교수를 먼저 만듭니다.
+        instructor = db.query(models.User).filter(models.User.role == "INSTRUCTOR").first()
+        
+        if not instructor:
+            print("⚠️ 테스트를 위한 교수 계정을 생성합니다...")
+            hashed_pw = auth.get_password_hash("1234")
+            instructor = models.User(
+                email="prof_test@inoxde.com",
+                password=hashed_pw,
+                name="테스트교수",
+                role="INSTRUCTOR"
+            )
+            db.add(instructor)
+            db.commit()
+            db.refresh(instructor) # ID 발급
+            print(f"✅ 교수 계정 생성 완료 (ID: {instructor.id})")
+        else:
+            print(f"ℹ️ 기존 교수 계정 사용 (ID: {instructor.id})")
+
+        # 2. 시나리오: 관리자가 '2025-2'학기 강의를 생성함
+        # 위에서 확보한 교수님의 ID를 사용합니다.
+        test_course = models.Course(
+            title="자동생성_테스트_강의",
+            semester="2025-2",
+            instructor_id=instructor.id 
+        )
+        db.add(test_course)
+        db.commit()
+        db.refresh(test_course)
+
+        # 3. 17주차 데이터 생성 (main.py의 로직과 동일하게 수행)
+        # 2025년 9월 1일 월요일 개강 기준
+        start_date = datetime(2025, 9, 1, 9, 0, 0)
+        sessions = []
+        for i in range(17):
+            sessions.append(models.ClassSession(
+                course_id=test_course.id,
+                week_number=i+1,
+                session_date=start_date + timedelta(weeks=i),
+                attendance_method='ELECTRONIC',
+                is_open=False
+            ))
+        db.add_all(sessions)
         db.commit()
 
-    # 2. [시뮬레이션] 관리자가 강의를 생성했다고 가정
-    # (원래는 API를 호출해야 하지만, 여기선 DB 로직을 직접 실행하여 검증)
-    from main import create_course_admin
-    # API 함수는 의존성(User, DB)이 필요하므로, 여기선 '로직'과 동일하게 DB에 직접 넣어서 테스트
-    
-    # 2-1. 강의 생성
-    new_course = models.Course(
-        title=test_title,
-        semester="2025-2",
-        instructor_id=1 # 임시 ID
-    )
-    db.add(new_course)
-    db.commit()
-    db.refresh(new_course)
-    
-    # 2-2. 17주차 자동 생성 로직 실행 (main.py의 로직 복제 테스트)
-    from datetime import timedelta
-    start_date = datetime(2025, 9, 1, 9, 0, 0)
-    for i in range(17):
-        db.add(models.ClassSession(
-            course_id=new_course.id,
-            week_number=i+1,
-            session_date=start_date + timedelta(weeks=i)
-        ))
-    db.commit()
+        # 4. 검증
+        count = db.query(models.ClassSession).filter_by(course_id=test_course.id).count()
+        print(f"📊 생성된 주차 수: {count}개 (목표: 17개)")
+        
+        if count == 17:
+            print("✅ 성공! 17주차 데이터가 모두 정상적으로 생성되었습니다.")
+            first = sessions[0].session_date.strftime("%Y-%m-%d")
+            last = sessions[-1].session_date.strftime("%Y-%m-%d")
+            print(f"   📅 기간: {first} (1주차) ~ {last} (17주차)")
+        else:
+            print(f"❌ 실패! 생성된 개수가 다릅니다: {count}")
 
-    # 3. 결과 검증
-    sessions = db.query(models.ClassSession).filter_by(course_id=new_course.id).all()
-    print(f"📊 생성된 주차 수: {len(sessions)}개 (목표: 17개)")
-    
-    if len(sessions) == 17:
-        print("✅ 성공! 17주차 데이터가 모두 정상적으로 생성되었습니다.")
-        # 샘플 출력
-        print(f" - 1주차: {sessions[0].session_date}")
-        print(f" - 17주차: {sessions[-1].session_date}")
-    else:
-        print(f"❌ 실패! 생성된 개수가 다릅니다.")
-
-    db.close()
+    except Exception as e:
+        print(f"❌ 에러 발생: {e}")
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     test_auto_schedule()
