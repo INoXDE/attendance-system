@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 from database import engine, get_db
+from datetime import datetime, timedelta
 import models, schemas, auth
 
 app = FastAPI(title="Inoxde 출석 서비스", description="Service Level Deployment")
@@ -98,22 +99,51 @@ def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
 # [2] 관리자 영역 (Admin)
 # ==========================================
 
+# [2] 관리자(Admin) 영역: 강의(Course) 관리 + 17주차 자동 생성
 @app.post("/admin/courses", response_model=schemas.CourseResponse, status_code=201)
 def create_course_admin(
     course: schemas.CourseCreate, 
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(get_db)
 ):
+    # 1. 관리자 권한 체크
     if current_user.role != "ADMIN":
-        raise HTTPException(status_code=403, detail="관리자만 강의를 개설할 수 있습니다.")
+        raise HTTPException(status_code=403, detail="관리자(Admin)만 강의를 개설할 수 있습니다.")
 
+    # 2. 강의 생성
     new_course = models.Course(
         title=course.title, 
         semester=course.semester, 
-        instructor_id=current_user.id 
+        instructor_id=current_user.id # 관리자 본인을 임시 교수로 지정 (추후 수정 가능)
     )
     db.add(new_course)
     db.commit()
+    db.refresh(new_course) # ID 발급을 위해 새로고침
+
+    # 3. [NEW] 17주차 수업 일정 자동 생성 로직
+    if course.semester == "2025-2":
+        # 기준일: 2025년 9월 1일 (월) 09:00
+        start_date = datetime(2025, 9, 1, 9, 0, 0)
+        
+        sessions_to_add = []
+        for i in range(17): # 0~16 (총 17회)
+            week_num = i + 1
+            # 1주씩 더함 (timedelta)
+            current_session_date = start_date + timedelta(weeks=i)
+            
+            new_session = models.ClassSession(
+                course_id=new_course.id,
+                week_number=week_num,
+                session_date=current_session_date,
+                attendance_method='ELECTRONIC', # 기본값
+                is_open=False
+            )
+            sessions_to_add.append(new_session)
+        
+        db.add_all(sessions_to_add)
+        db.commit()
+        print(f"✅ {new_course.title} 강의의 17주차 수업 데이터가 생성되었습니다.")
+
     return new_course
 
 # ==========================================
