@@ -44,7 +44,7 @@ class Course(Base):
     sessions = relationship("ClassSession", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="course", cascade="all, delete-orphan")
 
-# --- 이하 동일 ---
+# [수정] 공휴일 여부(is_holiday) 추가
 class ClassSession(Base):
     __tablename__ = "class_sessions"
     id = Column(Integer, primary_key=True, index=True)
@@ -53,6 +53,10 @@ class ClassSession(Base):
     session_date = Column(DateTime, nullable=False)
     attendance_method = Column(Enum('ELECTRONIC', 'AUTH_CODE', 'CALL'), default='ELECTRONIC')
     auth_code = Column(String(10), nullable=True)
+    
+    # [NEW] 공휴일 여부 추가
+    is_holiday = Column(Boolean, default=False)
+    
     is_open = Column(Boolean, default=False)
     course = relationship("Course", back_populates="sessions")
 

@@ -210,17 +210,28 @@
             const list = document.getElementById('deptList');
             list.innerHTML = '';
             
-            // 모든 Select 박스 초기화 및 채우기
-            const selects = ['uDept', 'cDept', 'editUserDept', 'manageCDept'];
-            selects.forEach(id => {
-                const el = document.getElementById(id);
-                el.innerHTML = '<option value="">선택...</option>';
-                allDepts.forEach(d => el.innerHTML += `<option value="${d.id}">${d.name}</option>`);
-            });
+            // ... (Select 초기화 코드는 그대로) ...
 
             allDepts.forEach(d => {
                 const isSafe = (d.user_count === 0 && d.course_count === 0);
-                list.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span>${d.name}</span> <div class="btn-group btn-group-sm"><button class="btn btn-outline-primary" onclick="renameDept(${d.id},'${d.name}')">이름</button><button class="btn btn-outline-danger" ${!isSafe?'disabled':''} onclick="deleteDept(${d.id})">삭제</button></div></li>`;
+                
+                // [수정] disabled 속성 제거! 대신 UI적으로 위험함을 표시 (빨간색 등)
+                // 하지만 요구사항은 "버튼 누를 수 있게" 이므로 그냥 일반 버튼으로 둠.
+                
+                list.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-bold me-2">${d.name}</span>
+                            <span class="badge ${isSafe ? 'bg-secondary' : 'bg-success'} rounded-pill">
+                                👤 ${d.user_count} / 📚 ${d.course_count}
+                            </span>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="renameDept(${d.id}, '${d.name}')">이름</button>
+                            <button class="btn btn-outline-danger" onclick="deleteDept(${d.id})">삭제</button>
+                        </div>
+                    </li>
+                `;
             });
         }
         

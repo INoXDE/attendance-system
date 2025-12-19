@@ -73,6 +73,9 @@ class SessionCreate(BaseModel):
     session_date: datetime
     attendance_method: str = "ELECTRONIC"
 
+class SessionUpdate(BaseModel):
+    session_date: datetime
+
 class AttendanceUpdate(BaseModel):
     student_id: int
     status: int
@@ -82,6 +85,7 @@ class SessionResponse(BaseModel):
     week_number: int
     session_date: datetime
     is_open: bool
+    is_holiday: bool # [NEW] 프론트엔드에 공휴일 정보 전달
     auth_code: Optional[str] = None
     attendance_method: str
     class Config: from_attributes = True

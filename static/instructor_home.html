@@ -2,50 +2,149 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>교수용 대시보드</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body class="bg-light">
-    <div class="container py-5">
-        <div class="d-flex justify-content-between mb-4">
-            <h3>🏫 담당 강의 목록</h3>
-            <button onclick="logout()" class="btn btn-outline-secondary">로그아웃</button>
-        </div>
-        <div class="row" id="courseList">
+    <nav class="navbar navbar-dark bg-primary px-3 mb-4">
+        <span class="navbar-brand">👨‍🏫 Professor Dashboard</span>
+        <button onclick="logout()" class="btn btn-sm btn-light text-primary fw-bold">로그아웃</button>
+    </nav>
+
+    <div class="container">
+        <h4 class="fw-bold mb-3">내 강의 목록</h4>
+        <div id="courseList" class="row g-3"></div>
+
+        <div id="sessionArea" class="mt-5" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="fw-bold" id="selectedCourseTitle">주차별 관리</h5>
+                <button class="btn btn-secondary btn-sm" onclick="closeSessionArea()">닫기</button>
             </div>
+            <table class="table table-bordered bg-white shadow-sm">
+                <thead class="table-light text-center">
+                    <tr>
+                        <th>주차</th>
+                        <th>날짜 / 상태</th>
+                        <th>출석 방식</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionListBody" class="text-center"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade" id="rescheduleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">📅 보강일 설정 (날짜 변경)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="rescheduleSessionId">
+                    <p class="text-muted mb-2">기존 날짜: <span id="oldDateDisplay" class="fw-bold"></span></p>
+                    <label class="form-label">변경할 날짜 선택</label>
+                    <input type="datetime-local" id="newSessionDate" class="form-control">
+                    <small class="text-danger">* 날짜 변경 시 '공결(공휴일)' 상태가 해제되고 정상 수업으로 처리됩니다.</small>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="submitReschedule()">변경 저장</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', loadCourses);
+
+        async function loadCourses() {
             const res = await fetch('/instructor/dashboard');
-            if (res.ok) {
-                const courses = await res.json();
-                const listDiv = document.getElementById('courseList');
-                
-                courses.forEach(c => {
-                    listDiv.innerHTML += `
-                        <div class="col-md-4 mb-3">
-                            <div class="card shadow-sm h-100" style="cursor:pointer;" onclick="location.href='/static/instructor_course.html?id=${c.id}'">
-                                <div class="card-body">
-                                    <h5 class="card-title fw-bold">${c.title}</h5>
-                                    <p class="card-text text-muted">${c.semester}학기</p>
-                                    <button class="btn btn-primary w-100 mt-2">관리하기</button>
-                                </div>
+            if(!res.ok) return alert("로그인 필요");
+            const courses = await res.json();
+            const div = document.getElementById('courseList');
+            div.innerHTML = '';
+            courses.forEach(c => {
+                div.innerHTML += `
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm" style="cursor:pointer;" onclick="loadSessions(${c.id}, '${c.title}')">
+                            <div class="card-body">
+                                <h5 class="card-title fw-bold">${c.title}</h5>
+                                <p class="card-text text-muted">${c.semester} | ${c.day_of_week}</p>
+                                <button class="btn btn-outline-primary w-100">강의 관리</button>
                             </div>
                         </div>
-                    `;
-                });
-            } else {
-                alert("권한이 없습니다.");
-                location.href = '/';
-            }
-        });
-
-        async function logout() {
-            await fetch('/auth/logout', { method: 'POST' });
-            window.location.href = '/';
+                    </div>`;
+            });
         }
+
+        async function loadSessions(cid, title) {
+            document.getElementById('selectedCourseTitle').textContent = `[${title}] 주차별 관리`;
+            document.getElementById('sessionArea').style.display = 'block';
+            
+            const res = await fetch(`/instructor/courses/${cid}/sessions`);
+            const sessions = await res.json();
+            const tbody = document.getElementById('sessionListBody');
+            tbody.innerHTML = '';
+
+            sessions.forEach(s => {
+                const dateStr = new Date(s.session_date).toLocaleString('ko-KR', {month:'numeric', day:'numeric', hour:'numeric', minute:'numeric'});
+                
+                // [핵심] 공휴일 처리 UI
+                let statusBadge = '';
+                let actionBtn = '';
+
+                if (s.is_holiday) {
+                    statusBadge = `<span class="badge bg-danger">⛔ 공휴일 (공결)</span>`;
+                    actionBtn = `<button class="btn btn-sm btn-warning" onclick="openReschedule(${s.id}, '${s.session_date}')">🔄 보강일 잡기</button>`;
+                } else {
+                    statusBadge = `<span class="badge bg-success">${dateStr}</span>`;
+                    // 일반 수업도 날짜 변경 가능하게 할지? -> 사용자 요구는 '공휴일에 대치되는 강의 보강일'이므로 여기선 생략 가능하나 유연성을 위해 열어둠
+                    actionBtn = `<button class="btn btn-sm btn-outline-secondary" onclick="openReschedule(${s.id}, '${s.session_date}')">날짜 변경</button>`;
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${s.week_number}주차</td>
+                        <td>
+                            ${statusBadge}<br>
+                            <small class="text-muted">${dateStr}</small>
+                        </td>
+                        <td>${s.attendance_method}</td>
+                        <td>${actionBtn}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openReschedule(sid, oldDate) {
+            document.getElementById('rescheduleSessionId').value = sid;
+            document.getElementById('oldDateDisplay').textContent = new Date(oldDate).toLocaleString();
+            new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
+        }
+
+        async function submitReschedule() {
+            const sid = document.getElementById('rescheduleSessionId').value;
+            const newDate = document.getElementById('newSessionDate').value;
+            if(!newDate) return alert("날짜를 선택하세요.");
+
+            const res = await fetch(`/instructor/sessions/${sid}/date`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ session_date: newDate })
+            });
+
+            if(res.ok) {
+                alert("보강일이 설정되었습니다.");
+                location.reload(); // 간단히 새로고침
+            } else {
+                alert("오류 발생");
+            }
+        }
+
+        function closeSessionArea() { document.getElementById('sessionArea').style.display = 'none'; }
+        async function logout() { await fetch('/auth/logout', { method:'POST' }); window.location.href='/'; }
     </script>
 </body>
 </html>

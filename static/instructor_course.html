@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <title>강의 관리</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         .auth-code-box { font-size: 3rem; letter-spacing: 10px; font-weight: bold; color: #4a90e2; border: 2px dashed #4a90e2; padding: 20px; border-radius: 10px; background: #f8f9fa; }
         .nav-tabs .nav-link.active { font-weight: bold; color: #4a90e2; border-top: 3px solid #4a90e2; }
-        /* [NEW] 사이드바 아이템 스타일 개선 */
         .session-btn { text-align: left; }
         .session-date { font-size: 0.8rem; color: #6c757d; }
     </style>
@@ -22,28 +22,30 @@
         <div class="row">
             <div class="col-md-3">
                 <h6 class="text-muted fw-bold mb-3">수업 주차 선택</h6>
-                <div class="list-group shadow-sm" id="sessionList">
-                    </div>
+                <div class="list-group shadow-sm" id="sessionList"></div>
             </div>
 
             <div class="col-md-9">
                 <div class="card shadow-sm" id="mainCard" style="display:none;">
                     <div class="card-header bg-white">
                         <ul class="nav nav-tabs card-header-tabs">
-                            <li class="nav-item">
-                                <a class="nav-link active" href="#" onclick="switchTab('control')">📡 수업 제어</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="#" onclick="switchTab('roster')">📋 학생 명부 & 수정</a>
-                            </li>
+                            <li class="nav-item"><a class="nav-link active" href="#" onclick="switchTab('control')">📡 수업 제어</a></li>
+                            <li class="nav-item"><a class="nav-link" href="#" onclick="switchTab('roster')">📋 학생 명부</a></li>
                         </ul>
                     </div>
                     
                     <div class="card-body p-4">
-                        <h4 class="mb-4 fw-bold" id="panelTitle">N주차 수업</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h4 class="fw-bold m-0" id="panelTitle">N주차 수업</h4>
+                            <button class="btn btn-sm btn-outline-warning fw-bold" onclick="openRescheduleModal()">📅 날짜/보강 변경</button>
+                        </div>
 
                         <div id="tab-control">
-                            <div class="row text-center">
+                            <div id="holidayAlert" class="alert alert-danger text-center" style="display:none;">
+                                <strong>⛔ 오늘은 공휴일(공결)입니다.</strong><br>수업을 진행하려면 위 '날짜/보강 변경' 버튼을 눌러 날짜를 변경하세요.
+                            </div>
+
+                            <div class="row text-center" id="controlPanel">
                                 <div class="col-md-6 mb-4 border-end">
                                     <label class="form-label fw-bold text-muted">출석 방식</label>
                                     <div class="d-flex justify-content-center gap-2 mb-3">
@@ -52,9 +54,7 @@
                                         <input type="radio" class="btn-check" name="method" id="m2" value="AUTH_CODE">
                                         <label class="btn btn-outline-primary" for="m2">🔢 인증번호</label>
                                     </div>
-                                    <button id="btnToggle" class="btn btn-success w-100 py-3 fw-bold" onclick="toggleAttendance()">
-                                        출석 시작 (OPEN)
-                                    </button>
+                                    <button id="btnToggle" class="btn btn-success w-100 py-3 fw-bold" onclick="toggleAttendance()">출석 시작 (OPEN)</button>
                                 </div>
                                 <div class="col-md-6 mb-4">
                                     <label class="form-label fw-bold text-muted">실시간 현황</label>
@@ -63,7 +63,6 @@
                                     </h1>
                                 </div>
                             </div>
-                            
                             <div id="authCodeArea" class="text-center mt-3" style="display:none;">
                                 <div class="auth-code-box" id="authCodeDisplay">----</div>
                                 <p class="text-muted mt-2">학생들에게 이 번호를 공유하세요</p>
@@ -71,28 +70,30 @@
                         </div>
 
                         <div id="tab-roster" style="display:none;">
-                            <div class="d-flex justify-content-end mb-2">
-                                <small class="text-muted">* 상태를 변경하면 즉시 저장됩니다.</small>
-                            </div>
                             <table class="table table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>이름</th>
-                                        <th>학번/이메일</th>
-                                        <th>상태 변경</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="rosterTable">
-                                </tbody>
+                                <thead class="table-light"><tr><th>이름</th><th>학번/이메일</th><th>상태 변경</th></tr></thead>
+                                <tbody id="rosterTable"></tbody>
                             </table>
                         </div>
-
                     </div>
                 </div>
                 
-                <div id="emptyState" class="text-center py-5 text-muted">
-                    <h5>👈 왼쪽에서 관리할 수업을 선택해주세요</h5>
+                <div id="emptyState" class="text-center py-5 text-muted"><h5>👈 왼쪽에서 관리할 수업을 선택해주세요</h5></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="rescheduleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">📅 수업 날짜 변경 (보강)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p>현재 날짜: <strong id="currentDateDisplay"></strong></p>
+                    <label class="form-label">변경할 날짜 및 시간</label>
+                    <input type="datetime-local" id="newSessionDate" class="form-control">
+                    <div class="form-text text-danger">* 날짜를 변경하면 '공휴일' 상태가 해제되고 정상 수업이 됩니다.</div>
                 </div>
+                <div class="modal-footer"><button class="btn btn-primary" onclick="submitReschedule()">저장</button></div>
             </div>
         </div>
     </div>
@@ -101,6 +102,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const COURSE_ID = urlParams.get('id') || 1;
         let currentSessionId = null;
+        let currentSessionDate = null;
         let refreshTimer = null;
 
         document.addEventListener('DOMContentLoaded', loadSessions);
@@ -108,15 +110,9 @@
         function switchTab(tabName) {
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
             event.target.classList.add('active');
-
-            if (tabName === 'control') {
-                document.getElementById('tab-control').style.display = 'block';
-                document.getElementById('tab-roster').style.display = 'none';
-            } else {
-                document.getElementById('tab-control').style.display = 'none';
-                document.getElementById('tab-roster').style.display = 'block';
-                loadRoster(); 
-            }
+            document.getElementById('tab-control').style.display = tabName==='control'?'block':'none';
+            document.getElementById('tab-roster').style.display = tabName==='roster'?'block':'none';
+            if(tabName==='roster') loadRoster();
         }
 
         async function loadSessions() {
@@ -126,56 +122,76 @@
             list.innerHTML = '';
             
             sessions.forEach(s => {
-                const badge = s.is_open ? '<span class="badge bg-success rounded-pill float-end">OPEN</span>' : '';
+                let badge = s.is_open ? '<span class="badge bg-success rounded-pill float-end">OPEN</span>' : '';
+                // [핵심] 공휴일 뱃지
+                if(s.is_holiday) badge = '<span class="badge bg-danger rounded-pill float-end">공휴일</span>';
                 
-                // [핵심] 날짜 계산 로직 추가
-                // DB의 session_date는 "월요일" 기준입니다.
-                const startDate = new Date(s.session_date);
-                const endDate = new Date(startDate);
-                endDate.setDate(startDate.getDate() + 6); // 일요일까지 (+6일)
-
-                // "MM월DD일" 형식으로 변환
-                const format = (d) => `${d.getMonth()+1}월${String(d.getDate()).padStart(2,'0')}일`;
-                const dateStr = `[${format(startDate)} - ${format(endDate)}]`;
+                const d = new Date(s.session_date);
+                const dateStr = `${d.getMonth()+1}/${d.getDate()} (${['일','월','화','수','목','금','토'][d.getDay()]})`;
 
                 list.innerHTML += `
                     <button class="list-group-item list-group-item-action session-btn" 
-                        onclick="selectSession(${s.id}, ${s.week_number}, ${s.is_open}, '${s.attendance_method}')">
+                        onclick="selectSession(${s.id}, ${s.week_number}, ${s.is_open}, '${s.attendance_method}', ${s.is_holiday}, '${s.session_date}')">
                         <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <span class="fw-bold">${s.week_number}주차</span>
-                                <div class="session-date">${dateStr}</div>
-                            </div>
+                            <div><span class="fw-bold">${s.week_number}주차</span> <span class="session-date ms-2">${dateStr}</span></div>
                             ${badge}
                         </div>
-                    </button>
-                `;
+                    </button>`;
             });
         }
 
-        function selectSession(id, week, isOpen, method) {
+        function selectSession(id, week, isOpen, method, isHoliday, dateStr) {
             currentSessionId = id;
+            currentSessionDate = dateStr;
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('mainCard').style.display = 'block';
             document.getElementById('panelTitle').textContent = `${week}주차 수업 관리`;
             
+            // 공휴일 처리 UI
+            const holidayAlert = document.getElementById('holidayAlert');
+            const controlPanel = document.getElementById('controlPanel');
+            if(isHoliday) {
+                holidayAlert.style.display = 'block';
+                controlPanel.style.opacity = '0.5'; // 비활성화 느낌
+                controlPanel.style.pointerEvents = 'none'; // 클릭 방지
+            } else {
+                holidayAlert.style.display = 'none';
+                controlPanel.style.opacity = '1';
+                controlPanel.style.pointerEvents = 'auto';
+            }
+
             document.querySelector(`input[name="method"][value="${method}"]`).checked = true;
             updateControlUI(isOpen, method);
             
             if (refreshTimer) clearInterval(refreshTimer);
             loadLiveStat();
             refreshTimer = setInterval(loadLiveStat, 3000);
+            if(document.getElementById('tab-roster').style.display === 'block') loadRoster();
+        }
+
+        // 보강일 변경 모달 열기
+        function openRescheduleModal() {
+            document.getElementById('currentDateDisplay').textContent = new Date(currentSessionDate).toLocaleString();
+            new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
+        }
+
+        async function submitReschedule() {
+            const newDate = document.getElementById('newSessionDate').value;
+            if(!newDate) return alert("날짜를 선택해주세요.");
             
-            if(document.getElementById('tab-roster').style.display === 'block') {
-                loadRoster();
-            }
+            const res = await fetch(`/instructor/sessions/${currentSessionId}/date`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ session_date: newDate })
+            });
+            if(res.ok) { alert("날짜가 변경되었습니다."); location.reload(); }
+            else alert("변경 실패");
         }
 
         async function toggleAttendance() {
             const btn = document.getElementById('btnToggle');
             const isOpening = btn.classList.contains('btn-success');
             const method = document.querySelector('input[name="method"]:checked').value;
-
             const res = await fetch(`/sessions/${currentSessionId}/status?is_open=${isOpening}&method=${method}`, { method: 'PATCH' });
             if (res.ok) {
                 const data = await res.json();
@@ -187,21 +203,20 @@
         function updateControlUI(isOpen, method, authCode = null) {
             const btn = document.getElementById('btnToggle');
             const codeArea = document.getElementById('authCodeArea');
-
             if (isOpen) {
                 btn.textContent = "마감하기 (CLOSE)";
                 btn.className = "btn btn-danger w-100 py-3 fw-bold";
                 if (method === 'AUTH_CODE') {
                     codeArea.style.display = 'block';
                     if (authCode) document.getElementById('authCodeDisplay').textContent = authCode;
-                } else { codeArea.style.display = 'none'; }
+                } else codeArea.style.display = 'none';
             } else {
                 btn.textContent = "출석 시작 (OPEN)";
                 btn.className = "btn btn-success w-100 py-3 fw-bold";
                 codeArea.style.display = 'none';
             }
         }
-
+        
         async function loadLiveStat() {
             if (!currentSessionId) return;
             const res = await fetch(`/sessions/${currentSessionId}/stat`);
@@ -217,47 +232,20 @@
             const roster = await res.json();
             const tbody = document.getElementById('rosterTable');
             tbody.innerHTML = '';
-
-            roster.forEach(student => {
-                const options = [
-                    {val:0, label:'미정', color:'#6c757d'},
-                    {val:1, label:'출석', color:'#198754'},
-                    {val:2, label:'지각', color:'#ffc107'},
-                    {val:3, label:'결석', color:'#dc3545'},
-                    {val:4, label:'공결', color:'#0d6efd'}
-                ];
-                
-                let selectHtml = `<select class="form-select form-select-sm" onchange="changeStatus(${student.student_id}, this.value)" style="width:100px;">`;
-                options.forEach(opt => {
-                    const selected = student.status === opt.val ? 'selected' : '';
-                    selectHtml += `<option value="${opt.val}" ${selected}>${opt.label}</option>`;
-                });
-                selectHtml += `</select>`;
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="fw-bold">${student.student_name}</td>
-                        <td class="text-muted small">${student.email}</td>
-                        <td>${selectHtml}</td>
-                    </tr>
-                `;
+            roster.forEach(s => {
+                const opts = [{v:0,t:'미정'},{v:1,t:'출석'},{v:2,t:'지각'},{v:3,t:'결석'},{v:4,t:'공결'}];
+                let sel = `<select class="form-select form-select-sm" onchange="changeStatus(${s.student_id},this.value)" style="width:100px;">`;
+                opts.forEach(o => sel += `<option value="${o.v}" ${s.status===o.v?'selected':''}>${o.t}</option>`);
+                sel += `</select>`;
+                tbody.innerHTML += `<tr><td class="fw-bold">${s.student_name}</td><td class="small text-muted">${s.email}</td><td>${sel}</td></tr>`;
             });
         }
-
-        async function changeStatus(studentId, newStatus) {
-            try {
-                const res = await fetch(`/instructor/sessions/${currentSessionId}/attendances`, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ student_id: studentId, status: parseInt(newStatus) })
-                });
-                if(res.ok) {
-                    console.log("상태 변경 완료");
-                    loadLiveStat();
-                } else {
-                    alert("변경 실패");
-                }
-            } catch(e) { console.error(e); }
+        async function changeStatus(sid, val) {
+            await fetch(`/instructor/sessions/${currentSessionId}/attendances`, {
+                method:'PATCH', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({student_id:sid, status:parseInt(val)})
+            });
+            loadLiveStat();
         }
     </script>
 </body>

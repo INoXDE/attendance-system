@@ -232,29 +232,22 @@ def get_users(me: models.User = Depends(auth.get_current_user), db: Session = De
     return db.query(models.User).all()
 
 # 3. 강좌 관리 (Create, Update, Delete, Enrollment)
-# 1. 강의 생성 (교수 지정 로직 반영)
+# 1. [수정] 강의 생성 함수 (공휴일 체크 추가)
 @app.post("/admin/courses", response_model=schemas.CourseResponse)
 def create_course(c: schemas.CourseCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
     
-    # [Check] 교수가 실제 존재하는지 확인
     instructor = db.query(models.User).filter(models.User.id == c.instructor_id, models.User.role == 'INSTRUCTOR').first()
-    if not instructor:
-        raise HTTPException(status_code=400, detail="유효하지 않은 교수 ID입니다.")
+    if not instructor: raise HTTPException(400, detail="유효하지 않은 교수 ID")
 
     new_c = models.Course(
-        title=c.title, 
-        semester=c.semester, 
-        course_type=c.course_type, 
-        day_of_week=c.day_of_week, 
-        instructor_id=c.instructor_id, # [수정] 입력받은 교수로 배정
-        department_id=c.department_id
+        title=c.title, semester=c.semester, course_type=c.course_type, 
+        day_of_week=c.day_of_week, instructor_id=c.instructor_id, department_id=c.department_id
     )
     db.add(new_c)
     db.commit()
     db.refresh(new_c)
     
-    # 17주차 자동 생성 (공휴일 로직 유지)
     if "2025" in c.semester:
         base_start = datetime(2025, 9, 1, 9, 0, 0)
         target_weekday = DAY_MAP.get(c.day_of_week, 0)
@@ -265,11 +258,21 @@ def create_course(c: schemas.CourseCreate, me: models.User = Depends(auth.get_cu
         sessions = []
         for i in range(17):
             current_date = first_session_date + timedelta(weeks=i)
-            sessions.append(models.ClassSession(course_id=new_c.id, week_number=i+1, session_date=current_date))
+            date_str = current_date.strftime("%Y-%m-%d")
+            
+            # [NEW] 공휴일 리스트 체크
+            is_hol = (date_str in HOLIDAYS_2025_2)
+            
+            sessions.append(models.ClassSession(
+                course_id=new_c.id, 
+                week_number=i+1, 
+                session_date=current_date,
+                is_holiday=is_hol # DB에 저장
+            ))
         db.add_all(sessions)
         db.commit()
         
-    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", f"{c.title} (Prof: {instructor.name})")
+    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", f"{c.title}")
     return new_c
 
 # ... (update_course 등 나머지 함수에도 day_of_week 필드 처리 추가 필요) ...
@@ -291,14 +294,27 @@ def update_course(course_id: int, c: schemas.CourseUpdate, me: models.User = Dep
     log_audit(db, me.id, "COURSE", course_id, "UPDATE", c.title)
     return target
 
-@app.delete("/admin/courses/{course_id}")
-def delete_course(course_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    if me.role != "ADMIN": raise HTTPException(403)
-    target = db.query(models.Course).filter(models.Course.id == course_id).first()
-    if target:
-        db.delete(target)
-        db.commit()
-        log_audit(db, me.id, "COURSE", course_id, "DELETE")
+# 2. [수정] 학과 삭제 함수 (방어 로직 강화)
+@app.delete("/admin/departments/{dept_id}")
+def delete_department(dept_id: int, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if user.role != "ADMIN": raise HTTPException(403)
+    
+    d = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if not d: raise HTTPException(404)
+
+    # 본부는 절대 삭제 불가
+    if d.name == "대학본부":
+        raise HTTPException(status_code=400, detail="⛔ 대학본부는 삭제할 수 없습니다.")
+    
+    # 구성원 존재 시 삭제 불가
+    u_count = db.query(models.User).filter_by(department_id=dept_id).count()
+    c_count = db.query(models.Course).filter_by(department_id=dept_id).count()
+    
+    if u_count > 0 or c_count > 0:
+        raise HTTPException(status_code=400, detail=f"구성원({u_count}명) 또는 강의({c_count}개)가 있어 삭제할 수 없습니다.")
+        
+    db.delete(d)
+    db.commit()
     return {"msg": "Deleted"}
 
 @app.get("/admin/courses", response_model=list[schemas.CourseResponse])
@@ -448,6 +464,26 @@ def update_attendance_manual(session_id: int, update_data: AttendanceUpdate, cur
     db.commit()
     log_audit(db, current_user.id, "ATTENDANCE", session_id, "MANUAL_UPDATE", f"Student {update_data.student_id} -> {update_data.status}") # [NEW] 로그 추가
     return {"message": "수정되었습니다."}
+
+# 3. [추가] 교수님 보강일 설정 API
+@app.patch("/instructor/sessions/{session_id}/date")
+def update_session_date(session_id: int, date_data: schemas.SessionUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "INSTRUCTOR": raise HTTPException(403)
+    
+    session = db.query(models.ClassSession).filter(models.ClassSession.id == session_id).first()
+    if not session: raise HTTPException(404)
+    
+    # 본인 강의인지 체크 (보안)
+    course = db.query(models.Course).filter(models.Course.id == session.course_id).first()
+    if course.instructor_id != current_user.id: raise HTTPException(403, detail="본인의 강의가 아닙니다.")
+    
+    session.session_date = date_data.session_date
+    # 날짜를 바꾸면 공휴일 상태 해제 (정상 수업으로 전환)
+    session.is_holiday = False 
+    
+    db.commit()
+    log_audit(db, current_user.id, "SESSION", session_id, "RESCHEDULE", str(date_data.session_date))
+    return {"msg": "Updated"}
 
 # ==========================================
 # [4] 학생 영역 (Student) - 기존 유지
