@@ -196,28 +196,101 @@
             } catch(e) {}
         }
 
-        // --- 학과 ---
+// --- 학과 관리 스크립트 (UI 개선) ---
+
         async function loadDepts() {
             const res = await fetch('/admin/departments');
             allDepts = await res.json();
             const list = document.getElementById('deptList');
             list.innerHTML = '';
             
-            // Select 박스들 채우기
+            // 다른 탭의 Select 박스들도 업데이트
             const selects = ['uDept', 'cDept', 'editUserDept'];
             selects.forEach(id => {
                 const el = document.getElementById(id);
+                // 현재 선택된 값 유지 로직이 필요하다면 추가 가능하나, 여기선 초기화
+                const currentVal = el.value; 
                 el.innerHTML = '<option value="">선택...</option>';
                 allDepts.forEach(d => el.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+                if(currentVal) el.value = currentVal; // 선택값 복구 시도
             });
 
-            allDepts.forEach(d => list.innerHTML += `<li class="list-group-item d-flex justify-content-between">${d.name} <span class="badge bg-secondary">${d.id}</span></li>`);
+            // 리스트 렌더링 (현황 및 버튼 추가)
+            if (allDepts.length === 0) {
+                list.innerHTML = '<li class="list-group-item text-center text-muted">등록된 학과가 없습니다.</li>';
+                return;
+            }
+
+            allDepts.forEach(d => {
+                // 안전 삭제 여부 확인 (인원이 있거나 강의가 있으면 삭제 버튼 비활성화 시각 효과 or 경고)
+                const isSafe = (d.user_count === 0 && d.course_count === 0);
+                const badgeClass = isSafe ? "bg-secondary" : "bg-success"; // 비어있으면 회색, 차있으면 초록색
+                
+                list.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-bold fs-5 me-2">${d.name}</span>
+                            <span class="badge ${badgeClass} rounded-pill" title="구성원 / 개설강의">
+                                👤 ${d.user_count} / 📚 ${d.course_count}
+                            </span>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="renameDept(${d.id}, '${d.name}')">이름 변경</button>
+                            <button class="btn btn-outline-danger" onclick="deleteDept(${d.id})">삭제</button>
+                        </div>
+                    </li>
+                `;
+            });
         }
+
         async function createDept() {
             const name = document.getElementById('newDeptName').value;
-            if(!name) return;
-            await fetch('/admin/departments', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name}) });
-            loadDepts(); document.getElementById('newDeptName').value='';
+            if(!name) return alert("학과명을 입력하세요");
+            
+            const res = await fetch('/admin/departments', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            });
+            
+            if(res.ok) { 
+                loadDepts(); 
+                document.getElementById('newDeptName').value=''; 
+            } else {
+                const err = await res.json();
+                alert("생성 실패: " + err.detail);
+            }
+        }
+
+        async function renameDept(id, oldName) {
+            const newName = prompt(`'${oldName}' 학과의 새로운 이름을 입력하세요:`, oldName);
+            if (!newName || newName === oldName) return;
+
+            const res = await fetch(`/admin/departments/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: newName})
+            });
+
+            if (res.ok) {
+                loadDepts();
+            } else {
+                alert("수정 실패 (중복된 이름 등)");
+            }
+        }
+
+        async function deleteDept(id) {
+            if (!confirm("정말 이 학과를 삭제하시겠습니까?")) return;
+
+            const res = await fetch(`/admin/departments/${id}`, { method: 'DELETE' });
+            
+            if (res.ok) {
+                alert("삭제되었습니다.");
+                loadDepts();
+            } else {
+                // 백엔드에서 보낸 '구성원이 남아있습니다' 메시지를 그대로 출력
+                const err = await res.json();
+                alert("❌ " + err.detail);
+            }
         }
 
         // --- 사용자 ---

@@ -87,6 +87,71 @@ def create_dept(dept: schemas.DepartmentCreate, user: models.User = Depends(auth
 def get_depts(db: Session = Depends(get_db)):
     return db.query(models.Department).all()
 
+# main.py (학과 관리 부분 수정)
+
+# 1. 학과 목록 조회 (인원 수 포함)
+@app.get("/admin/departments")
+def get_departments(db: Session = Depends(get_db)):
+    depts = db.query(models.Department).all()
+    result = []
+    for d in depts:
+        # 안전한 삭제를 위해 연관 데이터 개수를 미리 셉니다.
+        u_count = db.query(models.User).filter_by(department_id=d.id).count()
+        c_count = db.query(models.Course).filter_by(department_id=d.id).count()
+        result.append({
+            "id": d.id, 
+            "name": d.name,
+            "user_count": u_count,
+            "course_count": c_count
+        })
+    return result
+
+# 2. 학과 생성 (기존 동일)
+@app.post("/admin/departments", response_model=schemas.DepartmentResponse)
+def create_dept(dept: schemas.DepartmentCreate, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if user.role != "ADMIN": raise HTTPException(403)
+    if db.query(models.Department).filter_by(name=dept.name).first():
+        raise HTTPException(400, detail="이미 존재하는 학과명입니다.")
+    new_d = models.Department(name=dept.name)
+    db.add(new_d)
+    db.commit()
+    log_audit(db, user.id, "DEPT", new_d.id, "CREATE", dept.name)
+    return new_d
+
+# 3. [NEW] 학과 이름 변경
+@app.put("/admin/departments/{dept_id}")
+def update_department(dept_id: int, dept: schemas.DepartmentCreate, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if user.role != "ADMIN": raise HTTPException(403)
+    d = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if not d: raise HTTPException(404)
+    
+    old_name = d.name
+    d.name = dept.name
+    db.commit()
+    log_audit(db, user.id, "DEPT", d.id, "UPDATE", f"{old_name} -> {dept.name}")
+    return {"msg": "Updated", "name": d.name}
+
+# 4. [NEW] 학과 삭제 (안전 장치 포함)
+@app.delete("/admin/departments/{dept_id}")
+def delete_department(dept_id: int, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if user.role != "ADMIN": raise HTTPException(403)
+    
+    # [핵심] 구성원이나 강의가 있는지 확인
+    u_count = db.query(models.User).filter_by(department_id=dept_id).count()
+    c_count = db.query(models.Course).filter_by(department_id=dept_id).count()
+    
+    if u_count > 0 or c_count > 0:
+        # 400 에러를 던져서 프론트엔드에서 경고창을 띄우게 함
+        raise HTTPException(status_code=400, detail=f"삭제 불가: 구성원({u_count}명) 또는 강의({c_count}개)가 남아있습니다.")
+        
+    d = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if d:
+        db.delete(d)
+        db.commit()
+        log_audit(db, user.id, "DEPT", dept_id, "DELETE")
+    
+    return {"msg": "Deleted"}
+
 # 2. 사용자 관리 (Create, Update, Delete)
 @app.post("/admin/users", response_model=schemas.UserResponse)
 def create_user(u: schemas.UserCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
