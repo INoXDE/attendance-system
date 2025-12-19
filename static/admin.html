@@ -4,26 +4,27 @@
     <meta charset="UTF-8">
     <title>시스템 관리자</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
-        .nav-link.active { font-weight: bold; background-color: #f8f9fa !important; border-bottom: 2px solid #0d6efd !important; }
+        .nav-link.active { font-weight: bold; border-bottom: 2px solid #0d6efd !important; }
+        .table-hover tbody tr:hover { background-color: #f1f3f5; cursor: pointer; }
     </style>
 </head>
 <body class="bg-light">
-    <nav class="navbar navbar-dark bg-dark px-3">
-        <a class="navbar-brand" href="#">⚙️ Admin Dashboard</a>
+    <nav class="navbar navbar-dark bg-dark px-3 mb-4">
+        <a class="navbar-brand" href="#">⚙️ Admin Control Center</a>
         <button onclick="logout()" class="btn btn-sm btn-outline-light">로그아웃</button>
     </nav>
 
-    <div class="container py-4">
-        <div class="alert alert-info d-flex justify-content-between align-items-center" id="systemStatus">
-            <span>시스템 상태 확인 중...</span>
-            <span class="badge bg-light text-dark" id="serverTime"></span>
+    <div class="container">
+        <div class="alert alert-success d-flex justify-content-between align-items-center mb-4" id="systemStatus">
+            <span>Checking System...</span>
         </div>
 
         <ul class="nav nav-tabs bg-white rounded-top shadow-sm px-2 pt-2">
             <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-dept">🏢 학과 관리</a></li>
-            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-user">👥 사용자 등록</a></li>
-            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-course">📚 강좌 개설</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-user">👥 사용자 관리</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-course">📚 강좌 관리</a></li>
             <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-log">📜 감사 로그</a></li>
         </ul>
 
@@ -31,67 +32,71 @@
             
             <div class="tab-pane fade show active" id="tab-dept">
                 <div class="input-group mb-3">
-                    <input type="text" id="newDeptName" class="form-control" placeholder="새 학과 이름 (예: 컴퓨터공학과)">
-                    <button class="btn btn-primary" onclick="createDept()">추가하기</button>
+                    <input type="text" id="newDeptName" class="form-control" placeholder="새 학과 이름">
+                    <button class="btn btn-primary" onclick="createDept()">추가</button>
                 </div>
-                <h6 class="text-muted">등록된 학과 목록</h6>
                 <ul class="list-group" id="deptList"></ul>
             </div>
 
             <div class="tab-pane fade" id="tab-user">
-                <form onsubmit="createUser(); return false;">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label>이메일</label>
-                            <input type="email" id="uEmail" class="form-control" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label>이름</label>
-                            <input type="text" id="uName" class="form-control" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label>비밀번호</label>
-                            <input type="text" id="uPw" class="form-control" value="1234">
-                        </div>
-                        <div class="col-md-6">
-                            <label>권한</label>
-                            <select id="uRole" class="form-select">
-                                <option value="STUDENT">학생</option>
-                                <option value="INSTRUCTOR">교수</option>
-                                <option value="ADMIN">관리자</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label>소속 학과</label>
-                            <select id="uDept" class="form-select"><option value="">선택하세요</option></select>
-                        </div>
-                        <div class="col-md-6">
-                            <label>학번 (학생인 경우)</label>
-                            <input type="text" id="uNum" class="form-control">
-                        </div>
-                        <div class="col-12 mt-3">
-                            <button type="submit" class="btn btn-success w-100">사용자 생성</button>
+                <div class="card mb-4 bg-light border-0">
+                    <div class="card-body">
+                        <h6 class="fw-bold">➕ 새 사용자 등록</h6>
+                        <div class="row g-2">
+                            <div class="col-md-3"><input type="email" id="uEmail" class="form-control" placeholder="이메일"></div>
+                            <div class="col-md-2"><input type="text" id="uName" class="form-control" placeholder="이름"></div>
+                            <div class="col-md-2"><input type="text" id="uPw" class="form-control" placeholder="비번(1234)" value="1234"></div>
+                            <div class="col-md-2">
+                                <select id="uRole" class="form-select">
+                                    <option value="STUDENT">학생</option>
+                                    <option value="INSTRUCTOR">교수</option>
+                                    <option value="ADMIN">관리자</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2"><select id="uDept" class="form-select"></select></div>
+                            <div class="col-md-1"><button class="btn btn-success w-100" onclick="createUser()">등록</button></div>
                         </div>
                     </div>
-                </form>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold">사용자 목록</h6>
+                    <input type="text" id="userSearch" class="form-control w-25 form-control-sm" placeholder="이름/이메일 검색..." onkeyup="filterUsers()">
+                </div>
+                <div style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr><th>ID</th><th>이름</th><th>이메일</th><th>권한</th><th>학과</th><th>관리</th></tr>
+                        </thead>
+                        <tbody id="userListBody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="tab-pane fade" id="tab-course">
-                <form onsubmit="createCourse(); return false;">
-                    <div class="mb-3">
-                        <label>강의명</label>
-                        <input type="text" id="cTitle" class="form-control" required>
+                <div class="card mb-4 bg-light border-0">
+                    <div class="card-body">
+                        <h6 class="fw-bold">➕ 새 강의 개설</h6>
+                        <div class="row g-2">
+                            <div class="col-md-3"><input type="text" id="cTitle" class="form-control" placeholder="강의명"></div>
+                            <div class="col-md-2"><input type="text" id="cSem" class="form-control" value="2025-2"></div>
+                            <div class="col-md-2">
+                                <select id="cType" class="form-select">
+                                    <option value="전공">전공</option>
+                                    <option value="교양">교양</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3"><select id="cDept" class="form-select"></select></div>
+                            <div class="col-md-2"><button class="btn btn-primary w-100" onclick="createCourse()">개설</button></div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label>학기</label>
-                        <input type="text" id="cSem" class="form-control" value="2025-2">
-                    </div>
-                    <div class="mb-3">
-                        <label>개설 학과</label>
-                        <select id="cDept" class="form-select"><option value="">선택하세요</option></select>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">강의 생성 (17주차 자동)</button>
-                </form>
+                </div>
+
+                <h6 class="fw-bold mb-2">개설된 강의 목록</h6>
+                <table class="table table-hover">
+                    <thead class="table-light"><tr><th>ID</th><th>강의명</th><th>이수구분</th><th>학기</th><th>교수</th><th>학과</th><th>관리</th></tr></thead>
+                    <tbody id="courseListBody"></tbody>
+                </table>
             </div>
 
             <div class="tab-pane fade" id="tab-log">
@@ -106,121 +111,309 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="modal fade" id="userEditModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">사용자 정보 수정</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" id="editUserId">
+                    <div class="mb-2"><label>이름</label><input type="text" id="editUserName" class="form-control"></div>
+                    <div class="mb-2"><label>이메일</label><input type="email" id="editUserEmail" class="form-control"></div>
+                    <div class="mb-2"><label>학번</label><input type="text" id="editUserNum" class="form-control"></div>
+                    <div class="mb-2"><label>권한</label>
+                        <select id="editUserRole" class="form-select"><option value="STUDENT">학생</option><option value="INSTRUCTOR">교수</option><option value="ADMIN">관리자</option></select>
+                    </div>
+                    <div class="mb-2"><label>학과</label><select id="editUserDept" class="form-select"></select></div>
+                    <div class="mb-2"><label>비밀번호 변경 (비워두면 유지)</label><input type="text" id="editUserPw" class="form-control" placeholder="새 비밀번호"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-danger me-auto" onclick="deleteUser()">계정 삭제</button>
+                    <button class="btn btn-primary" onclick="saveUserEdit()">저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="courseManageModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">강좌 상세 관리</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" id="manageCourseId">
+                    
+                    <div class="row mb-4 border-bottom pb-3">
+                        <div class="col-md-6">
+                            <label class="fw-bold">강의명 수정</label>
+                            <input type="text" id="manageCTitle" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="fw-bold">이수구분</label>
+                            <select id="manageCType" class="form-select"><option value="전공">전공</option><option value="교양">교양</option></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="fw-bold">담당 교수 배정</label>
+                            <select id="manageCInst" class="form-select"></select>
+                        </div>
+                        <div class="col-12 mt-2 text-end">
+                            <button class="btn btn-danger btn-sm me-2" onclick="deleteCourse()">강의 삭제</button>
+                            <button class="btn btn-primary btn-sm" onclick="saveCourseEdit()">기본정보 저장</button>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold">🎓 수강생 관리</h6>
+                    <div class="input-group mb-2">
+                        <input type="text" id="enrollEmail" class="form-control" placeholder="학생 이메일 입력 (예: student@inoxde.com)">
+                        <button class="btn btn-outline-success" onclick="enrollStudent()">수강생 추가</button>
+                    </div>
+                    <ul class="list-group" id="enrolledList" style="max-height: 200px; overflow-y: auto;"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        // 전역 데이터 캐시
+        let allDepts = [];
+        let allUsers = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
             loadSystemStatus();
-            loadDepts();
+            await loadDepts();
             loadLogs();
+            loadUsers(); // 초기 로드
+            loadCourses();
         });
 
         // 시스템 상태
         async function loadSystemStatus() {
             try {
                 const res = await fetch('/admin/system-status');
-                if(!res.ok) throw new Error("서버 응답 오류"); // 에러 처리를 확실하게
-
                 const data = await res.json();
-                const timeStr = new Date(data.server_time).toLocaleString();
-
-                // [수정 포인트] innerHTML을 한 번에 갈아끼우도록 변경 (에러 원인 제거)
-                const statusBox = document.getElementById('systemStatus');
-                statusBox.className = "alert alert-success d-flex justify-content-between align-items-center"; // 색상을 초록색(alert-success)으로 변경
-                statusBox.innerHTML = `
-                    <span><strong>🟢 시스템 정상 가동 중</strong> (DB: ${data.database}, 유저: ${data.users}명, 강의: ${data.courses}개)</span>
-                    <span class="badge bg-light text-dark">${timeStr}</span>
+                document.getElementById('systemStatus').innerHTML = `
+                    <span><strong>🟢 System Online</strong> (DB: ${data.database}, Users: ${data.users}, Courses: ${data.courses})</span>
+                    <span class="badge bg-light text-dark">${new Date(data.server_time).toLocaleString()}</span>
                 `;
-            } catch(e) {
-                console.error(e);
-                const statusBox = document.getElementById('systemStatus');
-                statusBox.className = "alert alert-danger";
-                statusBox.textContent = "🔴 시스템 연결 오류 (새로고침 필요)";
-            }
+            } catch(e) {}
         }
 
-        // 학과 관리
+        // --- 학과 ---
         async function loadDepts() {
             const res = await fetch('/admin/departments');
-            const depts = await res.json();
+            allDepts = await res.json();
             const list = document.getElementById('deptList');
-            const selects = [document.getElementById('uDept'), document.getElementById('cDept')];
-            
             list.innerHTML = '';
-            selects.forEach(s => s.innerHTML = '<option value="">선택하세요</option>');
-
-            depts.forEach(d => {
-                list.innerHTML += `<li class="list-group-item">${d.name} <span class="badge bg-secondary float-end">ID: ${d.id}</span></li>`;
-                selects.forEach(s => s.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+            
+            // Select 박스들 채우기
+            const selects = ['uDept', 'cDept', 'editUserDept'];
+            selects.forEach(id => {
+                const el = document.getElementById(id);
+                el.innerHTML = '<option value="">선택...</option>';
+                allDepts.forEach(d => el.innerHTML += `<option value="${d.id}">${d.name}</option>`);
             });
-        }
 
+            allDepts.forEach(d => list.innerHTML += `<li class="list-group-item d-flex justify-content-between">${d.name} <span class="badge bg-secondary">${d.id}</span></li>`);
+        }
         async function createDept() {
             const name = document.getElementById('newDeptName').value;
-            if(!name) return alert("학과명을 입력하세요");
-            
-            const res = await fetch('/admin/departments', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: name})
-            });
-            if(res.ok) { alert("등록 완료"); loadDepts(); document.getElementById('newDeptName').value=''; }
+            if(!name) return;
+            await fetch('/admin/departments', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+            loadDepts(); document.getElementById('newDeptName').value='';
         }
 
-        // 사용자 생성
+        // --- 사용자 ---
+        async function loadUsers() {
+            const res = await fetch('/admin/users');
+            allUsers = await res.json();
+            renderUsers(allUsers);
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('userListBody');
+            tbody.innerHTML = '';
+            users.forEach(u => {
+                const dName = allDepts.find(d => d.id === u.department_id)?.name || '-';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${u.id}</td>
+                        <td>${u.name}</td>
+                        <td>${u.email}</td>
+                        <td><span class="badge bg-${u.role==='ADMIN'?'danger':(u.role==='INSTRUCTOR'?'warning':'info')}">${u.role}</span></td>
+                        <td>${dName}</td>
+                        <td><button class="btn btn-sm btn-outline-primary" onclick="openUserModal(${u.id})">수정</button></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function filterUsers() {
+            const q = document.getElementById('userSearch').value.toLowerCase();
+            const filtered = allUsers.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+            renderUsers(filtered);
+        }
+
         async function createUser() {
             const data = {
                 email: document.getElementById('uEmail').value,
                 password: document.getElementById('uPw').value,
                 name: document.getElementById('uName').value,
                 role: document.getElementById('uRole').value,
-                department_id: document.getElementById('uDept').value || null,
-                student_number: document.getElementById('uNum').value || null
+                department_id: document.getElementById('uDept').value || null
             };
-            const res = await fetch('/admin/users', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            if(res.ok) { alert("사용자 생성 완료!"); }
-            else { alert("생성 실패 (이메일 중복 등 확인)"); }
+            const res = await fetch('/admin/users', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            if(res.ok) { alert("생성됨"); loadUsers(); } else alert("실패 (이메일 중복 확인)");
         }
 
-        // 강의 생성
-        async function createCourse() {
+        function openUserModal(uid) {
+            const u = allUsers.find(x => x.id === uid);
+            document.getElementById('editUserId').value = u.id;
+            document.getElementById('editUserName').value = u.name;
+            document.getElementById('editUserEmail').value = u.email;
+            document.getElementById('editUserNum').value = u.student_number || '';
+            document.getElementById('editUserRole').value = u.role;
+            document.getElementById('editUserDept').value = u.department_id || '';
+            document.getElementById('editUserPw').value = ''; 
+            new bootstrap.Modal(document.getElementById('userEditModal')).show();
+        }
+
+        async function saveUserEdit() {
+            const uid = document.getElementById('editUserId').value;
             const data = {
-                title: document.getElementById('cTitle').value,
-                semester: document.getElementById('cSem').value,
-                department_id: document.getElementById('cDept').value || null
+                name: document.getElementById('editUserName').value,
+                email: document.getElementById('editUserEmail').value,
+                student_number: document.getElementById('editUserNum').value,
+                role: document.getElementById('editUserRole').value,
+                department_id: document.getElementById('editUserDept').value || null,
+                password: document.getElementById('editUserPw').value || null
             };
-            const res = await fetch('/admin/courses', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            if(res.ok) { alert("강의 개설 및 17주차 생성 완료!"); }
-            else { alert("개설 실패"); }
+            await fetch(`/admin/users/${uid}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            alert("수정 완료"); location.reload();
         }
 
-        // 감사 로그
-        async function loadLogs() {
-            const res = await fetch('/admin/audit-logs');
-            const logs = await res.json();
-            const tbody = document.getElementById('logList');
+        async function deleteUser() {
+            if(!confirm("정말 삭제하시겠습니까? 되돌릴 수 없습니다.")) return;
+            const uid = document.getElementById('editUserId').value;
+            await fetch(`/admin/users/${uid}`, { method: 'DELETE' });
+            location.reload();
+        }
+
+        // --- 강좌 ---
+        async function loadCourses() {
+            const res = await fetch('/admin/courses');
+            const courses = await res.json();
+            const tbody = document.getElementById('courseListBody');
             tbody.innerHTML = '';
-            logs.forEach(l => {
+            courses.forEach(c => {
+                const instName = allUsers.find(u => u.id === c.instructor_id)?.name || '미배정';
+                const deptName = allDepts.find(d => d.id === c.department_id)?.name || '-';
                 tbody.innerHTML += `
                     <tr>
-                        <td>${new Date(l.created_at).toLocaleString()}</td>
-                        <td>User ${l.actor_id}</td>
-                        <td>${l.target_type} ${l.target_id}</td>
-                        <td>${l.action}</td>
-                        <td>${l.details || '-'}</td>
+                        <td>${c.id}</td>
+                        <td class="fw-bold">${c.title}</td>
+                        <td>${c.course_type}</td>
+                        <td>${c.semester}</td>
+                        <td>${instName}</td>
+                        <td>${deptName}</td>
+                        <td><button class="btn btn-sm btn-outline-dark" onclick="openCourseModal(${c.id})">관리</button></td>
                     </tr>
                 `;
             });
         }
 
-        async function logout() {
-            await fetch('/auth/logout', { method: 'POST' });
-            window.location.href = '/';
+        async function createCourse() {
+            const data = {
+                title: document.getElementById('cTitle').value,
+                semester: document.getElementById('cSem').value,
+                course_type: document.getElementById('cType').value,
+                department_id: document.getElementById('cDept').value || null
+            };
+            const res = await fetch('/admin/courses', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            if(res.ok) { alert("개설 완료"); loadCourses(); }
         }
+
+        async function openCourseModal(cid) {
+            // 강좌 상세 정보 로드 (UI용) -> 사실 목록에서 가져와도 되지만, 최신 교수 목록을 위해 다시 매핑
+            const res = await fetch('/admin/courses');
+            const courses = await res.json();
+            const c = courses.find(x => x.id === cid);
+            
+            document.getElementById('manageCourseId').value = c.id;
+            document.getElementById('manageCTitle').value = c.title;
+            document.getElementById('manageCType').value = c.course_type;
+            
+            // 교수 선택 박스 채우기
+            const instSelect = document.getElementById('manageCInst');
+            instSelect.innerHTML = '<option value="">선택...</option>';
+            allUsers.filter(u => u.role === 'INSTRUCTOR').forEach(i => {
+                const sel = i.id === c.instructor_id ? 'selected' : '';
+                instSelect.innerHTML += `<option value="${i.id}" ${sel}>${i.name}</option>`;
+            });
+
+            // 수강생 목록 로드
+            loadEnrolledStudents(cid);
+            
+            new bootstrap.Modal(document.getElementById('courseManageModal')).show();
+        }
+
+        async function saveCourseEdit() {
+            const cid = document.getElementById('manageCourseId').value;
+            const data = {
+                title: document.getElementById('manageCTitle').value,
+                course_type: document.getElementById('manageCType').value,
+                instructor_id: document.getElementById('manageCInst').value || null,
+                department_id: null // 학과 변경은 일단 UI 복잡해서 생략 (필요시 추가)
+            };
+            await fetch(`/admin/courses/${cid}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            alert("수정 완료"); loadCourses();
+        }
+
+        async function deleteCourse() {
+            if(!confirm("강의를 삭제하면 모든 출석 데이터가 사라집니다!")) return;
+            const cid = document.getElementById('manageCourseId').value;
+            await fetch(`/admin/courses/${cid}`, { method: 'DELETE' });
+            location.reload();
+        }
+
+        async function loadEnrolledStudents(cid) {
+            const res = await fetch(`/admin/courses/${cid}/students`);
+            const students = await res.json();
+            const list = document.getElementById('enrolledList');
+            list.innerHTML = '';
+            if(students.length === 0) list.innerHTML = '<li class="list-group-item text-muted">수강생이 없습니다.</li>';
+            
+            students.forEach(s => {
+                list.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>${s.name} (${s.email})</span>
+                        <button class="btn btn-sm btn-danger py-0" onclick="removeStudent(${cid}, ${s.id})">삭제</button>
+                    </li>
+                `;
+            });
+        }
+
+        async function enrollStudent() {
+            const cid = document.getElementById('manageCourseId').value;
+            const email = document.getElementById('enrollEmail').value;
+            const res = await fetch(`/admin/courses/${cid}/students?student_email=${email}`, { method: 'POST' });
+            if(res.ok) { loadEnrolledStudents(cid); document.getElementById('enrollEmail').value=''; }
+            else { alert("학생을 찾을 수 없거나 이미 등록됨"); }
+        }
+
+        async function removeStudent(cid, uid) {
+            if(!confirm("수강 취소 시키겠습니까?")) return;
+            await fetch(`/admin/courses/${cid}/students/${uid}`, { method: 'DELETE' });
+            loadEnrolledStudents(cid);
+        }
+
+        // --- 로그 ---
+        async function loadLogs() {
+            const res = await fetch('/admin/audit-logs');
+            const logs = await res.json();
+            const tbody = document.getElementById('logList');
+            tbody.innerHTML = '';
+            logs.forEach(l => tbody.innerHTML += `<tr><td>${new Date(l.created_at).toLocaleString()}</td><td>User ${l.actor_id}</td><td>${l.target_type} ${l.target_id}</td><td>${l.action}</td><td>${l.details||'-'}</td></tr>`);
+        }
+
+        async function logout() { await fetch('/auth/logout', { method: 'POST' }); window.location.href = '/'; }
     </script>
 </body>
 </html>

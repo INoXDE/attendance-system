@@ -4,7 +4,7 @@ import shutil
 import os
 import random
 import string
-import json # [NEW] 감사 로그 상세 저장을 위해 필요
+import json
 from datetime import datetime, timedelta
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -17,9 +17,8 @@ from sqlalchemy.exc import OperationalError
 from database import engine, get_db
 import models, schemas, auth
 
-app = FastAPI(title="Inoxde 출석 서비스", description="Service Level Deployment")
+app = FastAPI(title="Inoxde Admin System")
 
-# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -28,7 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DB 연결 재시도 로직
+# ... (DB연결, 정적파일, Auth, 기본 User/System 로직은 기존과 동일) ...
+# 기존 코드의 상단 부분은 유지하시되, 아래 Admin 부분만 교체/추가하시면 됩니다.
+
 while True:
     try:
         models.Base.metadata.create_all(bind=engine)
@@ -38,179 +39,203 @@ while True:
         print("DB 연결 대기 중...")
         time.sleep(2)
 
-# 정적 파일 연결
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
-def read_root():
-    return FileResponse('static/index.html')
+def read_root(): return FileResponse('static/index.html')
 
-# --- [Helper] 감사 로그 기록 함수 (관리자 기능 핵심) ---
-def log_audit(db: Session, actor_id: int, target_type: str, target_id: int, action: str, details: str = ""):
+def log_audit(db, actor, type, tid, act, det=""):
     try:
-        log = models.AuditLog(
-            actor_id=actor_id,
-            target_type=target_type,
-            target_id=target_id,
-            action=action,
-            details=details
-        )
-        db.add(log)
+        db.add(models.AuditLog(actor_id=actor, target_type=type, target_id=tid, action=act, details=det))
         db.commit()
-    except Exception as e:
-        print(f"Audit Log Error: {e}")
+    except: pass
 
-# ==========================================
-# [1] 인증 (Auth) - 공통
-# ==========================================
-
+# --- Auth ---
 @app.post("/auth/login")
 def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not auth.verify_password(form_data.password, user.password):
-        raise HTTPException(status_code=400, detail="이메일 또는 비밀번호 오류")
-    
-    # 토큰 생성
+        raise HTTPException(status_code=400, detail="Login failed")
     access_token = auth.create_access_token(data={"sub": user.email, "role": user.role})
-    
-    # 쿠키 발급
-    response.set_cookie(
-        key="access_token",
-        value=f"Bearer {access_token}",
-        httponly=True,
-        samesite="Lax",
-        secure=True # HTTPS 환경
-    )
-    return {"message": "로그인 성공", "role": user.role, "name": user.name}
+    response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True, samesite="Lax", secure=True)
+    return {"role": user.role}
 
 @app.post("/auth/logout")
 def logout(response: Response):
     response.delete_cookie("access_token")
-    return {"message": "로그아웃 되었습니다."}
+    return {"msg": "bye"}
 
 @app.get("/users/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 # ==========================================
-# [2] 관리자 영역 (Admin) - 신규 및 수정
+# [Admin] 관리자 기능 (강화됨)
 # ==========================================
 
-# 1. 학과 관리 (CRUD)
+# 1. 학과 관리
 @app.post("/admin/departments", response_model=schemas.DepartmentResponse)
-def create_department(dept: schemas.DepartmentCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
-    
-    new_dept = models.Department(name=dept.name)
-    db.add(new_dept)
+def create_dept(dept: schemas.DepartmentCreate, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if user.role != "ADMIN": raise HTTPException(403)
+    new_d = models.Department(name=dept.name)
+    db.add(new_d)
     db.commit()
-    db.refresh(new_dept)
-    log_audit(db, current_user.id, "DEPARTMENT", new_dept.id, "CREATE", dept.name)
-    return new_dept
+    log_audit(db, user.id, "DEPT", new_d.id, "CREATE", dept.name)
+    return new_d
 
 @app.get("/admin/departments", response_model=list[schemas.DepartmentResponse])
-def get_departments(db: Session = Depends(get_db)):
+def get_depts(db: Session = Depends(get_db)):
     return db.query(models.Department).all()
 
-# 2. 사용자 관리 (기존 회원가입 대체 -> 관리자가 생성)
+# 2. 사용자 관리 (Create, Update, Delete)
 @app.post("/admin/users", response_model=schemas.UserResponse)
-def create_user_admin(user: schemas.UserCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    # 관리자 권한 체크
-    if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="관리자만 생성 가능")
-
-    if db.query(models.User).filter(models.User.email == user.email).first():
-        raise HTTPException(status_code=400, detail="이미 존재하는 이메일")
-    
-    hashed_pw = auth.get_password_hash(user.password)
-    
-    new_user = models.User(
-        email=user.email, password=hashed_pw, name=user.name, 
-        student_number=user.student_number, role=user.role.value,
-        department_id=user.department_id # [NEW] 학과 연결
-    )
-    db.add(new_user)
+def create_user(u: schemas.UserCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    if db.query(models.User).filter_by(email=u.email).first(): raise HTTPException(400, "Email exists")
+    new_u = models.User(email=u.email, password=auth.get_password_hash(u.password), name=u.name, student_number=u.student_number, role=u.role.value, department_id=u.department_id)
+    db.add(new_u)
     db.commit()
-    db.refresh(new_user)
+    log_audit(db, me.id, "USER", new_u.id, "CREATE", u.email)
+    return new_u
+
+@app.put("/admin/users/{user_id}", response_model=schemas.UserResponse)
+def update_user(user_id: int, u: schemas.UserUpdate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target: raise HTTPException(404)
     
-    log_audit(db, current_user.id, "USER", new_user.id, "CREATE", f"{user.role}: {user.email}")
-    return new_user
+    target.name = u.name
+    target.email = u.email
+    target.role = u.role.value
+    target.department_id = u.department_id
+    target.student_number = u.student_number
+    if u.password: target.password = auth.get_password_hash(u.password)
+    
+    db.commit()
+    log_audit(db, me.id, "USER", user_id, "UPDATE", u.email)
+    return target
+
+@app.delete("/admin/users/{user_id}")
+def delete_user(user_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if target:
+        db.delete(target)
+        db.commit()
+        log_audit(db, me.id, "USER", user_id, "DELETE")
+    return {"msg": "Deleted"}
 
 @app.get("/admin/users", response_model=list[schemas.UserResponse])
-def get_all_users(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
+def get_users(me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
     return db.query(models.User).all()
 
-# 3. 강의 관리 (학과 연결 + 17주차 자동 생성)
-@app.post("/admin/courses", response_model=schemas.CourseResponse, status_code=201)
-def create_course_admin(
-    course: schemas.CourseCreate, 
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.role != "ADMIN":
-        raise HTTPException(status_code=403, detail="관리자(Admin)만 강의를 개설할 수 있습니다.")
-
-    new_course = models.Course(
-        title=course.title, 
-        semester=course.semester, 
-        instructor_id=current_user.id, # 임시로 관리자 본인 할당 (추후 수정 가능)
-        department_id=course.department_id # [NEW] 학과 연결
-    )
-    db.add(new_course)
+# 3. 강좌 관리 (Create, Update, Delete, Enrollment)
+@app.post("/admin/courses", response_model=schemas.CourseResponse)
+def create_course(c: schemas.CourseCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    # [NEW] course_type 추가
+    new_c = models.Course(title=c.title, semester=c.semester, course_type=c.course_type, instructor_id=me.id, department_id=c.department_id)
+    db.add(new_c)
     db.commit()
-    db.refresh(new_course)
-
-    # 17주차 수업 일정 자동 생성 로직 (2025-2학기 기준)
-    if "2025" in course.semester:
+    db.refresh(new_c)
+    
+    # 17주차 자동 생성
+    if "2025" in c.semester:
         start_date = datetime(2025, 9, 1, 9, 0, 0)
-        sessions_to_add = []
-        for i in range(17):
-            week_num = i + 1
-            current_session_date = start_date + timedelta(weeks=i)
-            sessions_to_add.append(models.ClassSession(
-                course_id=new_course.id,
-                week_number=week_num,
-                session_date=current_session_date,
-                attendance_method='ELECTRONIC',
-                is_open=False
-            ))
-        db.add_all(sessions_to_add)
+        sessions = [models.ClassSession(course_id=new_c.id, week_number=i+1, session_date=start_date+timedelta(weeks=i)) for i in range(17)]
+        db.add_all(sessions)
         db.commit()
         
-    log_audit(db, current_user.id, "COURSE", new_course.id, "CREATE", course.title)
-    return new_course
+    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", c.title)
+    return new_c
 
-# 4. 감사 로그 조회
+@app.put("/admin/courses/{course_id}", response_model=schemas.CourseResponse)
+def update_course(course_id: int, c: schemas.CourseUpdate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    target = db.query(models.Course).filter(models.Course.id == course_id).first()
+    if not target: raise HTTPException(404)
+    
+    target.title = c.title
+    target.course_type = c.course_type
+    target.department_id = c.department_id
+    if c.instructor_id: target.instructor_id = c.instructor_id
+    
+    db.commit()
+    log_audit(db, me.id, "COURSE", course_id, "UPDATE", c.title)
+    return target
+
+@app.delete("/admin/courses/{course_id}")
+def delete_course(course_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    target = db.query(models.Course).filter(models.Course.id == course_id).first()
+    if target:
+        db.delete(target)
+        db.commit()
+        log_audit(db, me.id, "COURSE", course_id, "DELETE")
+    return {"msg": "Deleted"}
+
+@app.get("/admin/courses", response_model=list[schemas.CourseResponse])
+def get_all_courses(me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    return db.query(models.Course).all()
+
+# [NEW] 관리자가 특정 강의에 학생을 등록 (수강신청 강제 처리)
+@app.post("/admin/courses/{course_id}/students")
+def add_student_to_course(course_id: int, student_email: str, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    student = db.query(models.User).filter(models.User.email == student_email).first()
+    if not student: raise HTTPException(404, "User not found")
+    
+    if db.query(models.Enrollment).filter_by(user_id=student.id, course_id=course_id).first():
+        raise HTTPException(400, "Already enrolled")
+        
+    db.add(models.Enrollment(user_id=student.id, course_id=course_id))
+    db.commit()
+    log_audit(db, me.id, "ENROLL", course_id, "ADD_STUDENT", student.email)
+    return {"msg": "Enrolled"}
+
+# [NEW] 관리자가 특정 강의에서 학생 제거
+@app.delete("/admin/courses/{course_id}/students/{student_id}")
+def remove_student_from_course(course_id: int, student_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    enroll = db.query(models.Enrollment).filter_by(user_id=student_id, course_id=course_id).first()
+    if enroll:
+        db.delete(enroll)
+        db.commit()
+        log_audit(db, me.id, "ENROLL", course_id, "REMOVE_STUDENT", str(student_id))
+    return {"msg": "Removed"}
+
+# [NEW] 특정 강의의 수강생 목록 조회 (관리자용)
+@app.get("/admin/courses/{course_id}/students")
+def get_course_students(course_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    enrolls = db.query(models.Enrollment).filter_by(course_id=course_id).all()
+    result = []
+    for e in enrolls:
+        u = db.query(models.User).filter(models.User.id == e.user_id).first()
+        result.append({"id": u.id, "name": u.name, "email": u.email, "student_number": u.student_number})
+    return result
+
+# ... (감사 로그 및 Instructor/Student 영역 등 나머지 코드는 기존 main.py 하단과 동일) ...
 @app.get("/admin/audit-logs", response_model=list[schemas.AuditLogResponse])
 def get_audit_logs(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
+    if current_user.role != "ADMIN": raise HTTPException(status_code=403)
     return db.query(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(100).all()
 
-# main.py (수정할 부분)
 @app.get("/admin/system-status")
 def get_system_status(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
-    if current_user.role != "ADMIN": raise HTTPException(status_code=403, detail="권한 없음")
-    
-    # [수정] 변수 기본값 미리 설정 (에러 방지용)
+    if current_user.role != "ADMIN": raise HTTPException(status_code=403)
     user_count = 0
     course_count = 0
     db_status = "Error"
-
     try:
         user_count = db.query(models.User).count()
         course_count = db.query(models.Course).count()
         db_status = "Connected"
-    except Exception as e:
-        print(f"System Status Error: {e}")
-        # 에러가 나도 기본값(0)으로 응답하여 500 에러 방지
-        
-    return {
-        "status": "OK",
-        "database": db_status,
-        "users": user_count,
-        "courses": course_count,
-        "server_time": datetime.now()
-    }
+    except: pass
+    return {"status": "OK", "database": db_status, "users": user_count, "courses": course_count, "server_time": datetime.now()}
+
 # ==========================================
 # [3] 교원 영역 (Instructor) - 기존 유지
 # ==========================================

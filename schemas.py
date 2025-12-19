@@ -1,4 +1,4 @@
-# schemas.py
+# schemas.py (부분 수정 및 추가)
 from pydantic import BaseModel
 from typing import Optional, List
 from enum import Enum
@@ -9,24 +9,30 @@ class UserRole(str, Enum):
     INSTRUCTOR = "INSTRUCTOR"
     STUDENT = "STUDENT"
 
-# [NEW] 학과 정보
 class DepartmentCreate(BaseModel):
     name: str
 
 class DepartmentResponse(BaseModel):
     id: int
     name: str
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# 회원가입/생성 (학과 ID 추가)
+# [NEW] 사용자 수정용 스키마
+class UserUpdate(BaseModel):
+    name: str
+    email: str
+    role: UserRole
+    department_id: Optional[int] = None
+    student_number: Optional[str] = None
+    password: Optional[str] = None # 비번 변경 시에만 값 존재
+
 class UserCreate(BaseModel):
     email: str
     password: str
     name: str
     student_number: Optional[str] = None
     role: UserRole
-    department_id: Optional[int] = None # [NEW]
+    department_id: Optional[int] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -35,25 +41,31 @@ class UserResponse(BaseModel):
     student_number: Optional[str] = None
     role: str
     department_id: Optional[int] = None
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# 강의 생성 (학과 ID 추가)
+# [NEW] 강의 수정용 스키마
+class CourseUpdate(BaseModel):
+    title: str
+    course_type: str
+    department_id: Optional[int] = None
+    instructor_id: Optional[int] = None
+
 class CourseCreate(BaseModel):
     title: str
     semester: str
-    department_id: Optional[int] = None # [NEW]
+    department_id: Optional[int] = None
+    course_type: str = "전공" # [NEW] 기본값
 
 class CourseResponse(BaseModel):
     id: int
     title: str
     semester: str
+    course_type: str # [NEW]
     instructor_id: int
     department_id: Optional[int] = None
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
-# --- 기존 유지 ---
+# --- 기존 하단 모델들은 그대로 유지 ---
 class SessionCreate(BaseModel):
     week_number: int
     session_date: datetime
@@ -63,26 +75,14 @@ class AttendanceUpdate(BaseModel):
     student_id: int
     status: int
 
-class AttendanceCreate(BaseModel):
-    pass 
-
-class AttendanceResponse(BaseModel):
-    id: int
-    session_id: int
-    student_id: int
-    status: int
-    checked_at: datetime
-    class Config:
-        from_attributes = True
-
 class SessionResponse(BaseModel):
     id: int
     week_number: int
     session_date: datetime
     is_open: bool
     auth_code: Optional[str] = None
-    class Config:
-        from_attributes = True
+    attendance_method: str
+    class Config: from_attributes = True
 
 class StudentReport(BaseModel):
     student_name: str
@@ -94,7 +94,6 @@ class CourseReportResponse(BaseModel):
     course_title: str
     reports: List[StudentReport]
 
-# [NEW] 감사 로그 응답용
 class AuditLogResponse(BaseModel):
     id: int
     actor_id: Optional[int]
@@ -102,5 +101,4 @@ class AuditLogResponse(BaseModel):
     action: str
     details: Optional[str]
     created_at: datetime
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
