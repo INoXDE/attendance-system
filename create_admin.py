@@ -1,9 +1,10 @@
 # create_admin.py
-from database import SessionLocal
+from database import SessionLocal, engine  # [수정] engine 추가
 import models
 import auth
 
 def init_admin():
+    models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     print("🚀 초기 관리자 계정 생성 시작...")
 
