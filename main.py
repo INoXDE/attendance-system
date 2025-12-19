@@ -191,15 +191,27 @@ def update_user(user_id: int, u: schemas.UserUpdate, me: models.User = Depends(a
     log_audit(db, me.id, "USER", user_id, "UPDATE", u.email)
     return target
 
+# main.py (사용자 삭제 함수 교체)
+
 @app.delete("/admin/users/{user_id}")
 def delete_user(user_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
+    
     target = db.query(models.User).filter(models.User.id == user_id).first()
+    
     if target:
+        # [NEW] 마지막 관리자 삭제 방지 로직
+        if target.role == "ADMIN":
+            admin_count = db.query(models.User).filter(models.User.role == "ADMIN").count()
+            if admin_count <= 1:
+                raise HTTPException(status_code=400, detail="⛔ 마지막 남은 관리자는 삭제할 수 없습니다.")
+
         db.delete(target)
         db.commit()
         log_audit(db, me.id, "USER", user_id, "DELETE")
-    return {"msg": "Deleted"}
+        return {"msg": "Deleted"}
+    
+    return {"msg": "User not found"}
 
 @app.get("/admin/users", response_model=list[schemas.UserResponse])
 def get_users(me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
