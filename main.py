@@ -118,12 +118,19 @@ def create_dept(dept: schemas.DepartmentCreate, user: models.User = Depends(auth
     log_audit(db, user.id, "DEPT", new_d.id, "CREATE", dept.name)
     return new_d
 
-# 3. [NEW] 학과 이름 변경
+# main.py (수정 및 삭제 함수 교체)
+
+# 3. [보호됨] 학과 이름 변경
 @app.put("/admin/departments/{dept_id}")
 def update_department(dept_id: int, dept: schemas.DepartmentCreate, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if user.role != "ADMIN": raise HTTPException(403)
+    
     d = db.query(models.Department).filter(models.Department.id == dept_id).first()
     if not d: raise HTTPException(404)
+    
+    # [NEW] 안전장치: 대학본부는 수정 절대 불가
+    if d.name == "대학본부":
+        raise HTTPException(status_code=400, detail="⛔ 시스템 기본 학과(대학본부)는 수정할 수 없습니다.")
     
     old_name = d.name
     d.name = dept.name
@@ -131,24 +138,28 @@ def update_department(dept_id: int, dept: schemas.DepartmentCreate, user: models
     log_audit(db, user.id, "DEPT", d.id, "UPDATE", f"{old_name} -> {dept.name}")
     return {"msg": "Updated", "name": d.name}
 
-# 4. [NEW] 학과 삭제 (안전 장치 포함)
+# 4. [보호됨] 학과 삭제
 @app.delete("/admin/departments/{dept_id}")
 def delete_department(dept_id: int, user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if user.role != "ADMIN": raise HTTPException(403)
     
-    # [핵심] 구성원이나 강의가 있는지 확인
+    d = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if not d: raise HTTPException(404)
+
+    # [NEW] 안전장치: 대학본부는 삭제 절대 불가
+    if d.name == "대학본부":
+        raise HTTPException(status_code=400, detail="⛔ 시스템 기본 학과(대학본부)는 삭제할 수 없습니다.")
+    
+    # 기존 안전장치: 구성원이나 강의가 있으면 삭제 불가
     u_count = db.query(models.User).filter_by(department_id=dept_id).count()
     c_count = db.query(models.Course).filter_by(department_id=dept_id).count()
     
     if u_count > 0 or c_count > 0:
-        # 400 에러를 던져서 프론트엔드에서 경고창을 띄우게 함
         raise HTTPException(status_code=400, detail=f"삭제 불가: 구성원({u_count}명) 또는 강의({c_count}개)가 남아있습니다.")
         
-    d = db.query(models.Department).filter(models.Department.id == dept_id).first()
-    if d:
-        db.delete(d)
-        db.commit()
-        log_audit(db, user.id, "DEPT", dept_id, "DELETE")
+    db.delete(d)
+    db.commit()
+    log_audit(db, user.id, "DEPT", dept_id, "DELETE")
     
     return {"msg": "Deleted"}
 
