@@ -37,9 +37,11 @@
                     <div class="card-body p-4">
                         <div class="d-flex justify-content-between align-items-center mb-4">
                             <h4 class="fw-bold m-0" id="panelTitle">N주차 수업</h4>
-                            <button class="btn btn-sm btn-outline-warning fw-bold" onclick="openRescheduleModal()">📅 날짜/보강 변경</button>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-info text-white fw-bold" onclick="goToReport()">📊 누적 보고서</button>
+                                <button class="btn btn-sm btn-outline-warning fw-bold" onclick="openRescheduleModal()">📅 날짜/보강 변경</button>
+                            </div>
                         </div>
-
                         <div id="tab-control">
                             <div id="holidayAlert" class="alert alert-danger text-center" style="display:none;">
                                 <strong>⛔ 오늘은 공휴일(공결)입니다.</strong><br>수업을 진행하려면 위 '날짜/보강 변경' 버튼을 눌러 날짜를 변경하세요.
