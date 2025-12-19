@@ -73,7 +73,7 @@
                     else if (s.my_status === 2) statusHtml = '<span class="badge bg-warning text-dark status-badge">지각</span>';
                     else if (s.my_status === 3) statusHtml = '<span class="badge bg-danger status-badge">결석</span>';
                     else if (s.my_status === 4) statusHtml = '<span class="badge bg-primary status-badge">공결</span>';
-                    else if (s.my_status === 5) statusHtml = '<span class="badge bg-info text-dark status-badge">신청중</span>'; // [NEW] 신청중 상태 추가
+                    else if (s.my_status === 5) statusHtml = '<span class="badge bg-info text-dark status-badge">신청중</span>';
                     else statusHtml = '<span class="badge bg-secondary status-badge">미정</span>';
 
                     // 버튼 로직
@@ -83,10 +83,16 @@
                     } else if (s.my_status === 1) {
                         actionHtml = '<small class="text-success fw-bold">출석완료</small>';
                     } else if (s.my_status === 3) {
-                         // 결석 상태일 때만 공결 신청 버튼 표시
+                         // 결석 상태일 때 공결 신청 버튼
                          actionHtml = `<button class="btn btn-outline-secondary btn-sm" onclick="applyExcuse(${s.id})">공결신청</button>`;
                     } else if (s.my_status === 5) {
                         actionHtml = '<small class="text-muted">승인 대기중</small>';
+                    }
+
+                    // [수정된 위치] 이의제기 버튼 추가 로직을 루프 안으로 이동
+                    if (s.my_status === 2 || s.my_status === 3) {
+                        // 기존 버튼 뒤에 이의신청 추가
+                        actionHtml += `<button class="btn btn-sm btn-link text-muted ms-1" onclick="openAppeal(${s.id})">이의신청</button>`;
                     }
 
                     listDiv.innerHTML += `
@@ -126,7 +132,7 @@
             } catch (e) { alert("통신 오류"); }
         }
 
-        // [중복 제거됨] 공결 신청 모달 열기
+        // [중복 제거됨] 올바른 모달 열기 함수 하나만 유지
         function applyExcuse(sessionId) {
             document.getElementById('excuseSessionId').value = sessionId;
             new bootstrap.Modal(document.getElementById('excuseModal')).show();
@@ -150,6 +156,19 @@
                     location.reload();
                 } else { alert("업로드 실패"); }
             } catch(e) { console.error(e); }
+        }
+
+        function openAppeal(sid) {
+            const reason = prompt("이의제기 사유를 입력하세요:");
+            if(!reason) return;
+            
+            fetch(`/student/sessions/${sid}/appeal`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({reason: reason})
+            }).then(res => {
+                if(res.ok) alert("전송되었습니다.");
+            });
         }
     </script>
 </body>

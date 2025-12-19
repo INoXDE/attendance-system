@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
 
+# ... (Department, User는 기존 유지) ...
 class Department(Base):
     __tablename__ = "departments"
     id = Column(Integer, primary_key=True, index=True)
@@ -32,9 +33,10 @@ class Course(Base):
     title = Column(String(100), nullable=False)
     semester = Column(String(20), nullable=False)
     course_type = Column(String(20), default="전공", nullable=False)
-    
-    # [NEW] 강의 요일 (예: "Mon", "Tue" 또는 "월", "화")
     day_of_week = Column(String(10), default="Mon", nullable=False)
+    
+    # [NEW] 강의 공지사항
+    notice = Column(Text, nullable=True)
 
     instructor_id = Column(Integer, ForeignKey("users.id"))
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
@@ -44,7 +46,6 @@ class Course(Base):
     sessions = relationship("ClassSession", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="course", cascade="all, delete-orphan")
 
-# [수정] 공휴일 여부(is_holiday) 추가
 class ClassSession(Base):
     __tablename__ = "class_sessions"
     id = Column(Integer, primary_key=True, index=True)
@@ -53,13 +54,15 @@ class ClassSession(Base):
     session_date = Column(DateTime, nullable=False)
     attendance_method = Column(Enum('ELECTRONIC', 'AUTH_CODE', 'CALL'), default='ELECTRONIC')
     auth_code = Column(String(10), nullable=True)
-    
-    # [NEW] 공휴일 여부 추가
     is_holiday = Column(Boolean, default=False)
-    
     is_open = Column(Boolean, default=False)
+    
+    # [NEW] 휴강 투표 상태 (False: 없음, True: 투표중)
+    is_voting = Column(Boolean, default=False)
+    
     course = relationship("Course", back_populates="sessions")
 
+# ... (Enrollment 기존 유지) ...
 class Enrollment(Base):
     __tablename__ = "enrollments"
     id = Column(Integer, primary_key=True, index=True)
@@ -75,12 +78,16 @@ class Attendance(Base):
     session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # 0:미정, 1:출석, 2:지각, 3:결석, 4:공결(승인됨), 5:공결신청중
-    status = Column(Integer, default=0) 
-    
-    # [NEW] 공결 증빙 파일 경로
+    # 0:미정, 1:출석, 2:지각, 3:결석, 4:공결, 5:신청중
+    status = Column(Integer, default=0)
     proof_file = Column(String(255), nullable=True)
     
+    # [NEW] 이의제기 메시지
+    appeal_reason = Column(Text, nullable=True)
+    
+    # [NEW] 투표 응답 (Y/N)
+    vote_response = Column(String(10), nullable=True) 
+
     checked_at = Column(DateTime, default=func.now())
     student = relationship("User", back_populates="attendances")
 

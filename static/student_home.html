@@ -33,7 +33,25 @@
             <div class="text-center py-5 text-muted">로딩 중...</div>
         </div>
     </div>
+    <div id="globalNoticeArea" class="container mb-3" style="display:none;">
+        <div class="alert alert-info d-flex align-items-center shadow-sm">
+            <span class="me-2">📢</span> <strong id="noticeText"></strong>
+        </div>
+    </div>
 
+    <div class="modal fade" id="liveAlertModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-4">
+                <h3 id="alertTitle">📢 알림</h3>
+                <p id="alertMsg" class="mb-4"></p>
+                <div id="voteButtons" style="display:none;">
+                    <button class="btn btn-lg btn-primary me-2" onclick="castVote('Y')">찬성 (Yes)</button>
+                    <button class="btn btn-lg btn-secondary" onclick="castVote('N')">반대 (No)</button>
+                </div>
+                <button id="alertClose" class="btn btn-success w-100 mt-3" data-bs-dismiss="modal" style="display:none;">확인</button>
+            </div>
+        </div>
+    </div>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await loadUserInfo();
@@ -91,6 +109,98 @@
         async function logout() {
             await fetch('/auth/logout', { method: 'POST' });
             window.location.href = '/';
+        }
+        async function loadDashboard() {
+            const res = await fetch('/student/dashboard');
+            const data = await res.json();
+            const listDiv = document.getElementById('courseList');
+            listDiv.innerHTML = ''; 
+
+            data.forEach(c => {
+                // [NEW] 경고 및 공지 표시
+                let warningIcon = c.is_warning ? '<span class="text-danger fs-5 ms-2" title="결석 경고!">⚠️</span>' : '';
+                let noticeBadge = c.notice ? '<span class="badge bg-warning text-dark ms-2">공지</span>' : '';
+                
+                // 공지사항 있으면 상단에 띄우기 (마지막 강의 기준 예시)
+                if(c.notice) {
+                    document.getElementById('globalNoticeArea').style.display = 'block';
+                    document.getElementById('noticeText').textContent = `[${c.course_title}] ${c.notice}`;
+                }
+
+                listDiv.innerHTML += `
+                    <div class="card course-card" onclick="location.href='/static/student_detail.html?id=${c.course_id}'">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h6 class="fw-bold mb-0">${c.course_title} ${warningIcon} ${noticeBadge}</h6>
+                                <span class="badge bg-light text-dark border">${c.semester}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-primary" style="width: ${c.attendance_rate}%"></div>
+                            </div>
+                            <small class="text-muted">${c.attendance_rate}% 출석</small>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // 실시간 폴링 시작 (5초마다 체크)
+            setInterval(checkLiveStatus, 5000);
+        }
+
+        // [NEW] 실시간 상태 체크 (출석 오픈 / 투표)
+        async function checkLiveStatus() {
+            // 현재 수강중인 모든 강의의 세션을 체크해야 함.
+            // API 효율을 위해 여기서는 1번 강의(Demo)만 체크한다고 가정하거나, 
+            // /student/dashboard API에 현재 활성 세션 정보를 포함시켜야 함.
+            // 데모용으로 1번 강의의 최신 세션만 체크합니다.
+            
+            try {
+                const res = await fetch('/student/courses/1/sessions'); 
+                const sessions = await res.json();
+                
+                // 현재 진행중인 투표나 출석 찾기
+                const liveSession = sessions.find(s => s.is_open || s.is_voting);
+                if(liveSession) {
+                    showLivePopup(liveSession);
+                }
+            } catch(e) {}
+        }
+
+        let lastAlertId = null;
+        function showLivePopup(session) {
+            // 이미 띄운 알림이면 무시
+            const alertId = `${session.id}-${session.is_open}-${session.is_voting}`;
+            if(lastAlertId === alertId) return;
+            lastAlertId = alertId;
+
+            const modal = new bootstrap.Modal(document.getElementById('liveAlertModal'));
+            const title = document.getElementById('alertTitle');
+            const msg = document.getElementById('alertMsg');
+            const voteBtns = document.getElementById('voteButtons');
+            const closeBtn = document.getElementById('alertClose');
+
+            if(session.is_voting) {
+                title.textContent = "🗳️ 휴강 투표 진행 중";
+                msg.textContent = "교수님이 휴강 여부를 투표 중입니다.";
+                voteBtns.style.display = 'block';
+                closeBtn.style.display = 'none';
+                // 세션 ID 저장
+                voteBtns.dataset.sid = session.id;
+            } else if(session.is_open) {
+                title.textContent = "📢 출석 체크 시작!";
+                msg.textContent = "지금 바로 출석 버튼을 눌러주세요.";
+                voteBtns.style.display = 'none';
+                closeBtn.style.display = 'block';
+                closeBtn.onclick = () => location.href=`/static/student_detail.html?id=1`; // 이동
+            }
+            modal.show();
+        }
+
+        async function castVote(val) {
+            const sid = document.getElementById('voteButtons').dataset.sid;
+            await fetch(`/student/sessions/${sid}/vote?vote=${val}`, { method: 'POST' });
+            alert("투표 완료");
+            bootstrap.Modal.getInstance(document.getElementById('liveAlertModal')).hide();
         }
     </script>
 </body>

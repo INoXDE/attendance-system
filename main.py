@@ -454,22 +454,30 @@ def get_session_attendances(session_id: int, current_user: models.User = Depends
     session = db.query(models.ClassSession).filter(models.ClassSession.id == session_id).first()
     enrollments = db.query(models.Enrollment).filter(models.Enrollment.course_id == session.course_id).all()
     roster = []
+    
+    # 투표 결과 집계용
+    vote_y = 0
+    vote_n = 0
+
     for enroll in enrollments:
         student = db.query(models.User).filter(models.User.id == enroll.user_id).first()
         att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=student.id).first()
+        
+        # 투표 카운트
+        if att and att.vote_response == 'Y': vote_y += 1
+        if att and att.vote_response == 'N': vote_n += 1
+
         roster.append({
             "student_id": student.id, 
             "student_number": student.student_number, 
             "student_name": student.name,
             "email": student.email, 
             "status": att.status if att else 0, 
-            "proof_file": att.proof_file if att else None # [NEW] 파일 경로
+            "proof_file": att.proof_file if att else None,
+            "appeal_reason": att.appeal_reason if att else None # [NEW] 이의제기
         })
-    return roster
-
-class AttendanceUpdate(BaseModel):
-    student_id: int
-    status: int
+        
+    return {"roster": roster, "vote_stat": {"Y": vote_y, "N": vote_n}}
 
 @app.patch("/instructor/sessions/{session_id}/attendances")
 def update_attendance_manual(session_id: int, update_data: AttendanceUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
@@ -583,6 +591,29 @@ def get_stack_report(course_id: int, current_user: models.User = Depends(auth.ge
         "risk_group": risk_list
     }
 
+class NoticeUpdate(BaseModel):
+    notice: str
+
+@app.patch("/instructor/courses/{course_id}/notice")
+def update_course_notice(course_id: int, notice_data: NoticeUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "INSTRUCTOR": raise HTTPException(403)
+    course = db.query(models.Course).filter(models.Course.id == course_id).first()
+    if course.instructor_id != current_user.id: raise HTTPException(403)
+    
+    course.notice = notice_data.notice
+    db.commit()
+    log_audit(db, current_user.id, "COURSE", course_id, "UPDATE_NOTICE")
+    return {"msg": "Notice updated"}
+
+@app.patch("/instructor/sessions/{session_id}/vote")
+def toggle_vote(session_id: int, is_voting: bool, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "INSTRUCTOR": raise HTTPException(403)
+    session = db.query(models.ClassSession).filter_by(id=session_id).first()
+    session.is_voting = is_voting
+    db.commit()
+    log_audit(db, current_user.id, "SESSION", session_id, "VOTE_TOGGLE", str(is_voting))
+    return {"msg": "Vote status changed"}
+
 # ==========================================
 # [4] 학생 영역 (Student) - 기존 유지
 # ==========================================
@@ -595,17 +626,41 @@ def enroll_course(course_id: int, current_user: models.User = Depends(auth.get_c
     db.commit()
     return {"message": "수강신청 완료"}
 
-@app.get("/student/dashboard", response_model=list[schemas.CourseReportResponse])
-def get_student_dashboard(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+@app.get("/student/dashboard")
+def get_student_dashboard_enhanced(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     enrollments = db.query(models.Enrollment).filter(models.Enrollment.user_id == current_user.id).all()
     dashboard_data = []
     for enroll in enrollments:
         course = db.query(models.Course).filter(models.Course.id == enroll.course_id).first()
         total_sessions = db.query(models.ClassSession).filter(models.ClassSession.course_id == course.id).count()
-        attended_count = db.query(models.Attendance).join(models.ClassSession).filter(models.ClassSession.course_id == course.id, models.Attendance.student_id == current_user.id, models.Attendance.status.in_([1, 4])).count()
+        
+        # 결석 수 계산 (status=3)
+        absent_count = db.query(models.Attendance).join(models.ClassSession).filter(
+            models.ClassSession.course_id == course.id, 
+            models.Attendance.student_id == current_user.id, 
+            models.Attendance.status == 3
+        ).count()
+        
+        # 출석률
+        attended_count = db.query(models.Attendance).join(models.ClassSession).filter(
+            models.ClassSession.course_id == course.id, 
+            models.Attendance.student_id == current_user.id, 
+            models.Attendance.status.in_([1, 4])
+        ).count()
+        
         rate = (attended_count / total_sessions * 100) if total_sessions > 0 else 0.0
-        student_stat = schemas.StudentReport(student_name=current_user.name, total_sessions=total_sessions, attended_count=attended_count, attendance_rate=round(rate, 1))
-        dashboard_data.append(schemas.CourseReportResponse(course_title=course.title, reports=[student_stat]))
+        
+        # 경고 여부 (2회 이상 결석)
+        is_warning = (absent_count >= 2)
+
+        dashboard_data.append({
+            "course_id": course.id,
+            "course_title": course.title,
+            "semester": course.semester,
+            "notice": course.notice, # [NEW] 공지
+            "attendance_rate": round(rate, 1),
+            "is_warning": is_warning # [NEW] 경고
+        })
     return dashboard_data
 
 @app.post("/student/sessions/{session_id}/attend")
@@ -628,7 +683,15 @@ def get_student_sessions(course_id: int, current_user: models.User = Depends(aut
     result = []
     for s in sessions:
         att = db.query(models.Attendance).filter_by(session_id=s.id, student_id=current_user.id).first()
-        result.append({"id": s.id, "week_number": s.week_number, "session_date": s.session_date, "is_open": s.is_open, "attendance_method": s.attendance_method, "my_status": att.status if att else 0})
+        result.append({
+            "id": s.id, 
+            "week_number": s.week_number, 
+            "session_date": s.session_date, 
+            "is_open": s.is_open, 
+            "is_voting": s.is_voting, # [NEW] 투표중 여부
+            "attendance_method": s.attendance_method, 
+            "my_status": att.status if att else 0
+        })
     return result
 
 @app.get("/courses/{course_id}/report", response_model=schemas.CourseReportResponse)
@@ -666,3 +729,30 @@ def apply_excuse(session_id: int, file: UploadFile = File(...), current_user: mo
     db.commit()
     
     return {"msg": "Uploaded", "path": file_name}
+
+class AppealCreate(BaseModel):
+    reason: str
+
+@app.post("/student/sessions/{session_id}/appeal")
+def create_appeal(session_id: int, appeal: AppealCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=current_user.id).first()
+    if not att:
+        att = models.Attendance(session_id=session_id, student_id=current_user.id, status=0)
+        db.add(att)
+    
+    att.appeal_reason = appeal.reason
+    db.commit()
+    log_audit(db, current_user.id, "ATTENDANCE", att.id, "APPEAL", appeal.reason)
+    return {"msg": "Appeal sent"}
+
+@app.post("/student/sessions/{session_id}/vote")
+def cast_vote(session_id: int, vote: str, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if vote not in ['Y', 'N']: raise HTTPException(400)
+    att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=current_user.id).first()
+    if not att:
+        att = models.Attendance(session_id=session_id, student_id=current_user.id)
+        db.add(att)
+    att.vote_response = vote
+    db.commit()
+    log_audit(db, current_user.id, "VOTE", session_id, "CAST_VOTE", vote)
+    return {"msg": "Voted"}

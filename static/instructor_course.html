@@ -99,13 +99,39 @@
             </div>
         </div>
     </div>
+    <div class="card mb-4 border-0 shadow-sm bg-white">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div class="flex-grow-1 me-3">
+                <label class="fw-bold text-muted small">📢 강의 공지사항</label>
+                <input type="text" id="courseNoticeInput" class="form-control border-0 bg-light" placeholder="학생들에게 알릴 공지사항을 입력하세요...">
+            </div>
+            <button class="btn btn-primary" onclick="saveNotice()">저장</button>
+        </div>
+    </div>
 
+    <div id="tab-control">
+        <div class="card mt-3 border-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="fw-bold text-warning">🗳️ 휴강/보강 찬반 투표</h6>
+                        <small class="text-muted">학생들에게 팝업을 띄워 투표를 진행합니다.</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="me-3 fw-bold">찬성(Y): <span id="voteY">0</span> / 반대(N): <span id="voteN">0</span></span>
+                        <button id="btnVoteToggle" class="btn btn-outline-warning" onclick="toggleVote()">투표 시작</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const COURSE_ID = urlParams.get('id') || 1;
         let currentSessionId = null;
         let currentSessionDate = null;
         let refreshTimer = null;
+        let isVoting = false;
 
         document.addEventListener('DOMContentLoaded', loadSessions);
 
@@ -115,6 +141,34 @@
             document.getElementById('tab-control').style.display = tabName==='control'?'block':'none';
             document.getElementById('tab-roster').style.display = tabName==='roster'?'block':'none';
             if(tabName==='roster') loadRoster();
+        }
+
+        async function saveNotice() {
+            const txt = document.getElementById('courseNoticeInput').value;
+            await fetch(`/instructor/courses/${COURSE_ID}/notice`, {
+                method: 'PATCH', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({notice: txt})
+            });
+            alert("공지가 등록되었습니다.");
+        }
+
+        async function toggleVote() {
+            if(!currentSessionId) return alert("주차를 선택하세요");
+            const newState = !isVoting;
+            await fetch(`/instructor/sessions/${currentSessionId}/vote?is_voting=${newState}`, { method:'PATCH' });
+            isVoting = newState;
+            updateVoteUI();
+        }
+
+        function updateVoteUI() {
+            const btn = document.getElementById('btnVoteToggle');
+            if(isVoting) {
+                btn.textContent = "투표 마감";
+                btn.className = "btn btn-danger";
+            } else {
+                btn.textContent = "투표 시작";
+                btn.className = "btn btn-outline-warning";
+            }
         }
 
         async function loadSessions() {
@@ -231,41 +285,37 @@
         async function loadRoster() {
             if (!currentSessionId) return;
             const res = await fetch(`/instructor/sessions/${currentSessionId}/attendances`);
-            const roster = await res.json();
+            const data = await res.json(); // roster와 vote_stat이 들어옴
+            
+            // 투표 현황 업데이트
+            document.getElementById('voteY').textContent = data.vote_stat.Y;
+            document.getElementById('voteN').textContent = data.vote_stat.N;
+
             const tbody = document.getElementById('rosterTable');
             tbody.innerHTML = '';
 
-            roster.forEach(s => {
-                // 상태값: 0:미정, 1:출석, 2:지각, 3:결석, 4:공결, 5:신청중
-                const opts = [
-                    {v:0,t:'미정'}, {v:1,t:'출석'}, {v:2,t:'지각'},
-                    {v:3,t:'결석'}, {v:4,t:'공결(승인)'}, {v:5,t:'⏳신청중'}
-                ];
-                
-                let sel = `<select class="form-select form-select-sm" onchange="changeStatus(${s.student_id},this.value)" style="width:120px;">`;
+            data.roster.forEach(s => {
+                // ... (기존 셀렉트 박스 로직 유지) ...
+                const opts = [{v:0,t:'미정'}, {v:1,t:'출석'}, {v:2,t:'지각'}, {v:3,t:'결석'}, {v:4,t:'공결'}, {v:5,t:'신청중'}];
+                let sel = `<select class="form-select form-select-sm" onchange="changeStatus(${s.student_id},this.value)" style="width:100px;">`;
                 opts.forEach(o => sel += `<option value="${o.v}" ${s.status===o.v?'selected':''}>${o.t}</option>`);
                 sel += `</select>`;
 
-                // 파일 아이콘 (있으면 표시)
-                let fileBtn = '';
-                if(s.proof_file) {
-                    fileBtn = `<a href="/uploads/${s.proof_file}" target="_blank" class="btn btn-sm btn-outline-info ms-2" title="증빙서류 확인">📄</a>`;
+                // 이의제기 메시지 (있으면 아이콘 표시)
+                let appealIcon = '';
+                if(s.appeal_reason) {
+                    appealIcon = `<button class="btn btn-sm btn-link text-danger" onclick="alert('💬 학생 이의제기:\\n${s.appeal_reason}')">🔔이의신청</button>`;
                 }
                 
-                // 공결 신청중일 때 승인 버튼
-                let approveBtn = '';
-                if(s.status === 5) {
-                    approveBtn = `<button class="btn btn-sm btn-primary ms-1" onclick="changeStatus(${s.student_id}, 4)">승인</button>`;
-                }
+                // 공결 파일
+                let fileBtn = s.proof_file ? `<a href="/uploads/${s.proof_file}" target="_blank" class="btn btn-sm btn-outline-info">📄</a>` : '';
 
                 tbody.innerHTML += `
                     <tr>
-                        <td class="fw-bold">${s.student_name}</td>
+                        <td class="fw-bold">${s.student_name} ${appealIcon}</td>
                         <td class="small text-muted">${s.student_number}</td>
-                        <td class="d-flex align-items-center">
-                            ${sel}
-                            ${fileBtn}
-                            ${approveBtn}
+                        <td class="d-flex align-items-center gap-1">
+                            ${sel} ${fileBtn}
                         </td>
                     </tr>
                 `;
