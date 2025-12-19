@@ -1,4 +1,4 @@
-# main.py (Final Admin Integrated Version)
+# main.py
 import time
 import shutil
 import os
@@ -17,26 +17,17 @@ from sqlalchemy.exc import OperationalError
 from database import engine, get_db
 import models, schemas, auth
 
-
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-# [NEW] 공휴일 리스트 (2025-2학기, 주말 제외)
+# [상수 정의]
 HOLIDAYS_2025_2 = [
-    "2025-10-03", # 개천절
-    "2025-10-06", # 추석 대체? (임시)
-    "2025-10-07", # 추석 대체? (임시)
-    "2025-10-08", # 임시
-    "2025-10-09", # 한글날
-    "2025-12-25"  # 성탄절
+    "2025-10-03", "2025-10-06", "2025-10-07", 
+    "2025-10-08", "2025-10-09", "2025-12-25"
 ]
-
-# [NEW] 요일 매핑 헬퍼
 DAY_MAP = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 
+# 1. [중요] 앱(app) 객체 먼저 생성!
 app = FastAPI(title="Inoxde Admin System")
 
+# 2. 미들웨어 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -44,6 +35,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 3. [수정된 위치] 파일 저장소 설정 (app 생성 이후에 와야 함)
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 4. DB 테이블 생성 루프
+while True:
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        print("DB 연결 성공")
+        break
+    except OperationalError:
+        print("DB 연결 대기 중...")
+        time.sleep(2)
 
 # ... (DB연결, 정적파일, Auth, 기본 User/System 로직은 기존과 동일) ...
 # 기존 코드의 상단 부분은 유지하시되, 아래 Admin 부분만 교체/추가하시면 됩니다.
