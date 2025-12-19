@@ -45,16 +45,17 @@ class UserResponse(BaseModel):
 class CourseUpdate(BaseModel):
     title: str
     course_type: str
-    day_of_week: str # [NEW]
+    day_of_week: str
     department_id: Optional[int] = None
     instructor_id: Optional[int] = None
 
 class CourseCreate(BaseModel):
     title: str
     semester: str
-    department_id: Optional[int] = None
+    department_id: int # 학과 필수
+    instructor_id: int # [NEW] 교수 필수
     course_type: str = "전공"
-    day_of_week: str = "Mon" # [NEW] 기본값 월요일
+    day_of_week: str = "Mon"
 
 class CourseResponse(BaseModel):
     id: int

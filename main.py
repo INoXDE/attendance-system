@@ -232,57 +232,44 @@ def get_users(me: models.User = Depends(auth.get_current_user), db: Session = De
     return db.query(models.User).all()
 
 # 3. 강좌 관리 (Create, Update, Delete, Enrollment)
+# 1. 강의 생성 (교수 지정 로직 반영)
 @app.post("/admin/courses", response_model=schemas.CourseResponse)
 def create_course(c: schemas.CourseCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
     
-    # [NEW] 요일 정보 저장
+    # [Check] 교수가 실제 존재하는지 확인
+    instructor = db.query(models.User).filter(models.User.id == c.instructor_id, models.User.role == 'INSTRUCTOR').first()
+    if not instructor:
+        raise HTTPException(status_code=400, detail="유효하지 않은 교수 ID입니다.")
+
     new_c = models.Course(
         title=c.title, 
         semester=c.semester, 
         course_type=c.course_type, 
         day_of_week=c.day_of_week, 
-        instructor_id=me.id, 
+        instructor_id=c.instructor_id, # [수정] 입력받은 교수로 배정
         department_id=c.department_id
     )
     db.add(new_c)
     db.commit()
     db.refresh(new_c)
     
-    # [핵심] 17주차 자동 생성 (공휴일 & 요일 반영)
+    # 17주차 자동 생성 (공휴일 로직 유지)
     if "2025" in c.semester:
-        # 1. 개강일 기준 잡기 (2025-09-01 월요일)
         base_start = datetime(2025, 9, 1, 9, 0, 0)
-        
-        # 2. 선택한 요일에 맞춰 첫 수업일 계산
-        target_weekday = DAY_MAP.get(c.day_of_week, 0) # 입력 없으면 월요일(0)
+        target_weekday = DAY_MAP.get(c.day_of_week, 0)
         days_ahead = target_weekday - base_start.weekday()
         if days_ahead < 0: days_ahead += 7
-        
         first_session_date = base_start + timedelta(days=days_ahead)
         
         sessions = []
-        # 3. 17주차 생성 루프
         for i in range(17):
             current_date = first_session_date + timedelta(weeks=i)
-            date_str = current_date.strftime("%Y-%m-%d")
-            
-            # 공휴일 체크 (로그 출력)
-            if date_str in HOLIDAYS_2025_2:
-                print(f"⚠️ [공휴일 감지] {date_str} ({c.title}) - 휴강 처리 필요")
-                # 여기서 is_open=False로 두거나, 별도의 표식을 남길 수 있음.
-                # 현재는 날짜는 생성하되, 교수님이 '휴강'임을 알 수 있게 로그만 남김.
-            
-            sessions.append(models.ClassSession(
-                course_id=new_c.id, 
-                week_number=i+1, 
-                session_date=current_date
-            ))
-            
+            sessions.append(models.ClassSession(course_id=new_c.id, week_number=i+1, session_date=current_date))
         db.add_all(sessions)
         db.commit()
         
-    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", f"{c.title} ({c.day_of_week})")
+    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", f"{c.title} (Prof: {instructor.name})")
     return new_c
 
 # ... (update_course 등 나머지 함수에도 day_of_week 필드 처리 추가 필요) ...
@@ -294,8 +281,10 @@ def update_course(course_id: int, c: schemas.CourseUpdate, me: models.User = Dep
     
     target.title = c.title
     target.course_type = c.course_type
-    target.day_of_week = c.day_of_week # [NEW]
-    target.department_id = c.department_id
+    target.day_of_week = c.day_of_week
+    
+    # [수정] 학과 ID가 null이 아닐 때만 업데이트 (혹은 프론트에서 보내줌)
+    if c.department_id: target.department_id = c.department_id
     if c.instructor_id: target.instructor_id = c.instructor_id
     
     db.commit()
@@ -317,20 +306,38 @@ def get_all_courses(me: models.User = Depends(auth.get_current_user), db: Sessio
     if me.role != "ADMIN": raise HTTPException(403)
     return db.query(models.Course).all()
 
-# [NEW] 관리자가 특정 강의에 학생을 등록 (수강신청 강제 처리)
+# 3. 수강생 추가 (학번 검색으로 변경)
 @app.post("/admin/courses/{course_id}/students")
-def add_student_to_course(course_id: int, student_email: str, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+def add_student_to_course(course_id: int, student_number: str, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
-    student = db.query(models.User).filter(models.User.email == student_email).first()
-    if not student: raise HTTPException(404, "User not found")
+    
+    # [수정] 이메일 대신 학번으로 검색
+    student = db.query(models.User).filter(models.User.student_number == student_number).first()
+    if not student: raise HTTPException(404, detail="해당 학번의 학생을 찾을 수 없습니다.")
     
     if db.query(models.Enrollment).filter_by(user_id=student.id, course_id=course_id).first():
-        raise HTTPException(400, "Already enrolled")
+        raise HTTPException(400, detail="이미 수강 중인 학생입니다.")
         
     db.add(models.Enrollment(user_id=student.id, course_id=course_id))
     db.commit()
-    log_audit(db, me.id, "ENROLL", course_id, "ADD_STUDENT", student.email)
+    log_audit(db, me.id, "ENROLL", course_id, "ADD_STUDENT", f"{student.name}({student_number})")
     return {"msg": "Enrolled"}
+
+# 4. 수강생 목록 조회 (학번 포함 반환)
+@app.get("/admin/courses/{course_id}/students")
+def get_course_students(course_id: int, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if me.role != "ADMIN": raise HTTPException(403)
+    enrolls = db.query(models.Enrollment).filter_by(course_id=course_id).all()
+    result = []
+    for e in enrolls:
+        u = db.query(models.User).filter(models.User.id == e.user_id).first()
+        result.append({
+            "id": u.id, 
+            "name": u.name, 
+            "email": u.email, 
+            "student_number": u.student_number # 학번 필수
+        })
+    return result
 
 # [NEW] 관리자가 특정 강의에서 학생 제거
 @app.delete("/admin/courses/{course_id}/students/{student_id}")
