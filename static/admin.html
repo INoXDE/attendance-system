@@ -79,24 +79,27 @@
                         <h6 class="fw-bold">➕ 새 강의 개설</h6>
                         <div class="row g-2">
                             <div class="col-md-3"><input type="text" id="cTitle" class="form-control" placeholder="강의명"></div>
+                            <div class="col-md-2"><input type="text" id="cSem" class="form-control" value="2025-2" placeholder="학기"></div>
                             <div class="col-md-2">
                                 <select id="cType" class="form-select"><option value="전공">전공</option><option value="교양">교양</option></select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-1">
                                 <select id="cDay" class="form-select">
-                                    <option value="Mon">월요일</option><option value="Tue">화요일</option><option value="Wed">수요일</option><option value="Thu">목요일</option><option value="Fri">금요일</option>
+                                    <option value="Mon">월</option><option value="Tue">화</option><option value="Wed">수</option><option value="Thu">목</option><option value="Fri">금</option>
                                 </select>
                             </div>
                             <div class="col-md-2"><select id="cInst" class="form-select"><option value="">담당 교수</option></select></div>
                             <div class="col-md-2"><select id="cDept" class="form-select"><option value="">개설 학과</option></select></div>
-                            <div class="col-md-1"><button class="btn btn-primary w-100" onclick="createCourse()">개설</button></div>
+                            <div class="col-12 mt-2 text-end">
+                                <button class="btn btn-primary" onclick="createCourse()">강의 개설</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <h6 class="fw-bold mb-2">개설된 강의 목록</h6>
                 <table class="table table-hover">
-                    <thead class="table-light"><tr><th>ID</th><th>강의명</th><th>이수</th><th>요일</th><th>교수</th><th>학과</th><th>관리</th></tr></thead>
+                    <thead class="table-light"><tr><th>ID</th><th>강의명</th><th>이수</th><th>요일</th><th>학기</th><th>교수</th><th>학과</th><th>관리</th></tr></thead>
                     <tbody id="courseListBody"></tbody>
                 </table>
             </div>
@@ -159,7 +162,8 @@
                         </div>
                         <div class="col-md-2">
                             <label class="fw-bold small">학과</label>
-                            <select id="manageCDept" class="form-select"></select> </div>
+                            <select id="manageCDept" class="form-select"></select>
+                        </div>
                         <div class="col-md-2">
                             <label class="fw-bold small">교수</label>
                             <select id="manageCInst" class="form-select"></select>
@@ -182,16 +186,18 @@
     </div>
 
     <script>
+        // 전역 변수
         let allDepts = [];
         let allUsers = [];
         const DAY_DISPLAY = { "Mon": "월", "Tue": "화", "Wed": "수", "Thu": "목", "Fri": "금" };
 
         document.addEventListener('DOMContentLoaded', async () => {
+            console.log("🚀 관리자 페이지 로딩 시작...");
             loadSystemStatus();
             await loadDepts();
-            loadLogs();
-            await loadUsers(); // 교수 목록을 채우기 위해 기다림
+            await loadUsers();
             loadCourses();
+            loadLogs();
         });
 
         async function loadSystemStatus() {
@@ -200,58 +206,55 @@
                 if(!res.ok) throw new Error();
                 const data = await res.json();
                 document.getElementById('systemStatus').innerHTML = `<span><strong>🟢 System Online</strong> (Users: ${data.users}, Courses: ${data.courses})</span>`;
-            } catch(e) { document.getElementById('systemStatus').className="alert alert-danger"; document.getElementById('systemStatus').textContent="🔴 Offline"; }
+            } catch(e) { document.getElementById('systemStatus').className="alert alert-danger"; document.getElementById('systemStatus').textContent="🔴 Offline (서버 연결 안됨)"; }
         }
 
-        // --- Data Loading ---
         async function loadDepts() {
             const res = await fetch('/admin/departments');
             allDepts = await res.json();
             const list = document.getElementById('deptList');
             list.innerHTML = '';
             
-            // ... (Select 초기화 코드는 그대로) ...
+            // [FIX] 여기가 핵심입니다. 주석을 실제 코드로 복구했습니다.
+            const selects = ['uDept', 'cDept', 'editUserDept', 'manageCDept'];
+            selects.forEach(id => {
+                const el = document.getElementById(id);
+                if(el) {
+                    el.innerHTML = '<option value="">선택...</option>';
+                    allDepts.forEach(d => el.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+                }
+            });
 
             allDepts.forEach(d => {
+                // 삭제 버튼 활성화 (안전장치는 백엔드에 위임)
                 const isSafe = (d.user_count === 0 && d.course_count === 0);
-                
-                // [수정] disabled 속성 제거! 대신 UI적으로 위험함을 표시 (빨간색 등)
-                // 하지만 요구사항은 "버튼 누를 수 있게" 이므로 그냥 일반 버튼으로 둠.
-                
                 list.innerHTML += `
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="fw-bold me-2">${d.name}</span>
-                            <span class="badge ${isSafe ? 'bg-secondary' : 'bg-success'} rounded-pill">
-                                👤 ${d.user_count} / 📚 ${d.course_count}
-                            </span>
-                        </div>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>${d.name} <small class="text-muted">(👤${d.user_count}/📚${d.course_count})</small></span> 
                         <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-primary" onclick="renameDept(${d.id}, '${d.name}')">이름</button>
+                            <button class="btn btn-outline-primary" onclick="renameDept(${d.id},'${d.name}')">이름</button>
                             <button class="btn btn-outline-danger" onclick="deleteDept(${d.id})">삭제</button>
                         </div>
-                    </li>
-                `;
+                    </li>`;
             });
         }
         
         async function loadUsers() {
             const res = await fetch('/admin/users');
             allUsers = await res.json();
-            
-            // 교수 선택 박스 채우기 (생성용 + 수정용)
             const selects = ['cInst', 'manageCInst'];
             selects.forEach(id => {
                 const el = document.getElementById(id);
-                el.innerHTML = '<option value="">담당 교수 선택</option>';
-                allUsers.filter(u => u.role === 'INSTRUCTOR').forEach(u => {
-                    el.innerHTML += `<option value="${u.id}">${u.name} (${u.email})</option>`;
-                });
+                if(el) {
+                    el.innerHTML = '<option value="">담당 교수 선택</option>';
+                    allUsers.filter(u => u.role === 'INSTRUCTOR').forEach(u => {
+                        el.innerHTML += `<option value="${u.id}">${u.name} (${u.email})</option>`;
+                    });
+                }
             });
             renderUsers(allUsers);
         }
 
-        // --- Functions ---
         function renderUsers(users) {
             const tbody = document.getElementById('userListBody');
             tbody.innerHTML = '';
@@ -263,6 +266,40 @@
         function filterUsers() {
             const q = document.getElementById('userSearch').value.toLowerCase();
             renderUsers(allUsers.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
+        }
+
+        // --- 강의 생성 ---
+        async function createCourse() {
+            const title = document.getElementById('cTitle').value;
+            const semester = document.getElementById('cSem').value;
+            const type = document.getElementById('cType').value;
+            const day = document.getElementById('cDay').value;
+            const instId = document.getElementById('cInst').value;
+            const deptId = document.getElementById('cDept').value;
+
+            if(!title) return alert("강의명을 입력해주세요.");
+            if(!semester) return alert("학기를 입력해주세요.");
+            if(!instId) return alert("담당 교수를 선택해주세요.");
+            if(!deptId) return alert("개설 학과를 선택해주세요.");
+
+            const payload = {
+                title: title, semester: semester, course_type: type, day_of_week: day,
+                instructor_id: parseInt(instId), department_id: parseInt(deptId)
+            };
+
+            try {
+                const res = await fetch('/admin/courses', { 
+                    method: 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) 
+                });
+                if(res.ok) { 
+                    alert("✅ 강의 개설 완료!"); 
+                    document.getElementById('cTitle').value = ''; 
+                    loadCourses(); 
+                } else { 
+                    const err = await res.json(); 
+                    alert("❌ 개설 실패: " + (err.detail || "알 수 없는 오류")); 
+                }
+            } catch (e) { console.error(e); alert("❌ 서버 통신 오류"); }
         }
 
         async function createDept() {
@@ -282,7 +319,6 @@
             const res = await fetch(`/admin/departments/${id}`, { method:'DELETE' });
             if(res.ok) loadDepts(); else alert((await res.json()).detail);
         }
-
         async function createUser() {
             const data = {
                 email: document.getElementById('uEmail').value,
@@ -292,8 +328,9 @@
                 department_id: document.getElementById('uDept').value || null
             };
             const res = await fetch('/admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
-            if(res.ok) { alert("완료"); loadUsers(); } else alert("실패");
+            if(res.ok) { alert("완료"); loadUsers(); } else alert("실패: " + (await res.json()).detail);
         }
+
         function openUserModal(uid) {
             const u = allUsers.find(x => x.id === uid);
             document.getElementById('editUserId').value = u.id;
@@ -334,26 +371,11 @@
                 const instName = allUsers.find(u => u.id === c.instructor_id)?.name || '미배정';
                 const deptName = allDepts.find(d => d.id === c.department_id)?.name || '-';
                 const dayStr = DAY_DISPLAY[c.day_of_week] || c.day_of_week;
-                tbody.innerHTML += `<tr><td>${c.id}</td><td class="fw-bold">${c.title}</td><td>${c.course_type}</td><td>${dayStr}</td><td>${instName}</td><td>${deptName}</td><td><button class="btn btn-sm btn-outline-dark" onclick="openCourseModal(${c.id})">관리</button></td></tr>`;
+                tbody.innerHTML += `<tr><td>${c.id}</td><td class="fw-bold">${c.title}</td><td>${c.course_type}</td><td>${dayStr}</td><td>${c.semester}</td><td>${instName}</td><td>${deptName}</td><td><button class="btn btn-sm btn-outline-dark" onclick="openCourseModal(${c.id})">관리</button></td></tr>`;
             });
-        }
-        async function createCourse() {
-            const data = {
-                title: document.getElementById('cTitle').value,
-                semester: "2025-2", // 고정값 or Input
-                course_type: document.getElementById('cType').value,
-                day_of_week: document.getElementById('cDay').value,
-                instructor_id: document.getElementById('cInst').value, // [NEW] 필수 전송
-                department_id: document.getElementById('cDept').value
-            };
-            if(!data.instructor_id || !data.department_id) return alert("교수와 학과를 선택해주세요.");
-            
-            const res = await fetch('/admin/courses', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
-            if(res.ok) { alert("개설 완료"); loadCourses(); } else alert((await res.json()).detail);
         }
         
         async function openCourseModal(cid) {
-            // 정보 로드
             const res = await fetch('/admin/courses');
             const courses = await res.json();
             const c = courses.find(x => x.id === cid);
@@ -363,7 +385,7 @@
             document.getElementById('manageCType').value = c.course_type;
             document.getElementById('manageCDay').value = c.day_of_week;
             document.getElementById('manageCInst').value = c.instructor_id;
-            document.getElementById('manageCDept').value = c.department_id || ""; // [NEW] 학과 선택
+            document.getElementById('manageCDept').value = c.department_id || ""; 
 
             loadEnrolledStudents(cid);
             new bootstrap.Modal(document.getElementById('courseManageModal')).show();
@@ -375,8 +397,8 @@
                 title: document.getElementById('manageCTitle').value,
                 course_type: document.getElementById('manageCType').value,
                 day_of_week: document.getElementById('manageCDay').value,
-                instructor_id: document.getElementById('manageCInst').value,
-                department_id: document.getElementById('manageCDept').value // [NEW] 학과 전송
+                instructor_id: parseInt(document.getElementById('manageCInst').value),
+                department_id: parseInt(document.getElementById('manageCDept').value)
             };
             await fetch(`/admin/courses/${cid}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
             alert("저장됨"); loadCourses();
@@ -399,7 +421,7 @@
         }
         async function enrollStudent() {
             const cid = document.getElementById('manageCourseId').value;
-            const num = document.getElementById('enrollNum').value; // [NEW] 학번
+            const num = document.getElementById('enrollNum').value; 
             const res = await fetch(`/admin/courses/${cid}/students?student_number=${num}`, { method:'POST' });
             if(res.ok) { loadEnrolledStudents(cid); document.getElementById('enrollNum').value=''; }
             else alert("학생을 찾을 수 없거나 이미 등록됨");
