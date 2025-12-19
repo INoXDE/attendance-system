@@ -22,7 +22,25 @@
             <div class="text-center mt-5 text-muted">데이터를 불러오는 중...</div>
         </div>
     </div>
-
+    <div class="modal fade" id="excuseModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">📄 공결 신청서 제출</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" id="excuseSessionId">
+                    <div class="mb-3">
+                        <label class="form-label">증빙 서류 (진단서 등)</label>
+                        <input type="file" id="excuseFile" class="form-control">
+                    </div>
+                    <ul class="text-muted small">
+                        <li>파일을 업로드하면 교수님께 '공결 신청' 상태로 전달됩니다.</li>
+                        <li>교수님 승인 전까지는 '신청중' 상태가 됩니다.</li>
+                    </ul>
+                </div>
+                <div class="modal-footer"><button class="btn btn-primary" onclick="submitExcuse()">제출하기</button></div>
+            </div>
+        </div>
+    </div>
 <script>
         const urlParams = new URLSearchParams(window.location.search);
         const COURSE_ID = urlParams.get('id') || 1;
@@ -55,17 +73,20 @@
                     else if (s.my_status === 2) statusHtml = '<span class="badge bg-warning text-dark status-badge">지각</span>';
                     else if (s.my_status === 3) statusHtml = '<span class="badge bg-danger status-badge">결석</span>';
                     else if (s.my_status === 4) statusHtml = '<span class="badge bg-primary status-badge">공결</span>';
+                    else if (s.my_status === 5) statusHtml = '<span class="badge bg-info text-dark status-badge">신청중</span>'; // [NEW] 신청중 상태 추가
                     else statusHtml = '<span class="badge bg-secondary status-badge">미정</span>';
 
-                    // 버튼 로직 [수정됨]
+                    // 버튼 로직
                     if (s.is_open && s.my_status === 0) {
-                        // 클릭 시 메소드(AUTH_CODE 등)를 함께 전달
                         actionHtml = `<button class="btn btn-primary btn-sm" onclick="doAttend(${s.id}, '${s.attendance_method}')">출석하기</button>`;
                         statusHtml = '<span class="badge bg-info text-dark status-badge">진행중</span>';
                     } else if (s.my_status === 1) {
                         actionHtml = '<small class="text-success fw-bold">출석완료</small>';
                     } else if (s.my_status === 3) {
+                         // 결석 상태일 때만 공결 신청 버튼 표시
                          actionHtml = `<button class="btn btn-outline-secondary btn-sm" onclick="applyExcuse(${s.id})">공결신청</button>`;
+                    } else if (s.my_status === 5) {
+                        actionHtml = '<small class="text-muted">승인 대기중</small>';
                     }
 
                     listDiv.innerHTML += `
@@ -82,23 +103,18 @@
             } catch (e) { console.error(e); }
         }
 
-        // [수정된 함수] 출석 요청
         async function doAttend(sessionId, method) {
             let code = "";
-            
-            // 인증번호 방식이면 입력창 띄우기
             if (method === 'AUTH_CODE') {
                 code = prompt("교수님이 알려주신 인증번호 4자리를 입력하세요:");
-                if (code === null) return; // 취소 누름
+                if (code === null) return;
                 if (code.trim() === "") { alert("번호를 입력해주세요."); return; }
             } else {
                 if(!confirm("출석체크 하시겠습니까?")) return;
             }
 
             try {
-                // URL에 ?code=1234 형태로 붙여서 전송
                 const url = `/student/sessions/${sessionId}/attend` + (code ? `?code=${code}` : "");
-                
                 const res = await fetch(url, { method: 'POST' });
                 if (res.ok) {
                     alert("✅ 출석되었습니다!");
@@ -110,8 +126,30 @@
             } catch (e) { alert("통신 오류"); }
         }
 
+        // [중복 제거됨] 공결 신청 모달 열기
         function applyExcuse(sessionId) {
-            alert("공결 신청 기능은 다음 업데이트에 포함됩니다.");
+            document.getElementById('excuseSessionId').value = sessionId;
+            new bootstrap.Modal(document.getElementById('excuseModal')).show();
+        }
+
+        async function submitExcuse() {
+            const sid = document.getElementById('excuseSessionId').value;
+            const fileInput = document.getElementById('excuseFile');
+            if(fileInput.files.length === 0) return alert("파일을 선택해주세요.");
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            try {
+                const res = await fetch(`/student/sessions/${sid}/excuse`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if(res.ok) {
+                    alert("제출되었습니다. 승인을 기다려주세요.");
+                    location.reload();
+                } else { alert("업로드 실패"); }
+            } catch(e) { console.error(e); }
         }
     </script>
 </body>

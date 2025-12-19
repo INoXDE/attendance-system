@@ -232,12 +232,41 @@
             const roster = await res.json();
             const tbody = document.getElementById('rosterTable');
             tbody.innerHTML = '';
+
             roster.forEach(s => {
-                const opts = [{v:0,t:'미정'},{v:1,t:'출석'},{v:2,t:'지각'},{v:3,t:'결석'},{v:4,t:'공결'}];
-                let sel = `<select class="form-select form-select-sm" onchange="changeStatus(${s.student_id},this.value)" style="width:100px;">`;
+                // 상태값: 0:미정, 1:출석, 2:지각, 3:결석, 4:공결, 5:신청중
+                const opts = [
+                    {v:0,t:'미정'}, {v:1,t:'출석'}, {v:2,t:'지각'},
+                    {v:3,t:'결석'}, {v:4,t:'공결(승인)'}, {v:5,t:'⏳신청중'}
+                ];
+                
+                let sel = `<select class="form-select form-select-sm" onchange="changeStatus(${s.student_id},this.value)" style="width:120px;">`;
                 opts.forEach(o => sel += `<option value="${o.v}" ${s.status===o.v?'selected':''}>${o.t}</option>`);
                 sel += `</select>`;
-                tbody.innerHTML += `<tr><td class="fw-bold">${s.student_name}</td><td class="small text-muted">${s.email}</td><td>${sel}</td></tr>`;
+
+                // 파일 아이콘 (있으면 표시)
+                let fileBtn = '';
+                if(s.proof_file) {
+                    fileBtn = `<a href="/uploads/${s.proof_file}" target="_blank" class="btn btn-sm btn-outline-info ms-2" title="증빙서류 확인">📄</a>`;
+                }
+                
+                // 공결 신청중일 때 승인 버튼
+                let approveBtn = '';
+                if(s.status === 5) {
+                    approveBtn = `<button class="btn btn-sm btn-primary ms-1" onclick="changeStatus(${s.student_id}, 4)">승인</button>`;
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="fw-bold">${s.student_name}</td>
+                        <td class="small text-muted">${s.student_number}</td>
+                        <td class="d-flex align-items-center">
+                            ${sel}
+                            ${fileBtn}
+                            ${approveBtn}
+                        </td>
+                    </tr>
+                `;
             });
         }
         async function changeStatus(sid, val) {
@@ -246,6 +275,9 @@
                 body:JSON.stringify({student_id:sid, status:parseInt(val)})
             });
             loadLiveStat();
+        }
+        function goToReport() {
+            window.location.href = `/static/instructor_report.html?id=${COURSE_ID}`;
         }
     </script>
 </body>

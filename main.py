@@ -17,6 +17,11 @@ from sqlalchemy.exc import OperationalError
 from database import engine, get_db
 import models, schemas, auth
 
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # [NEW] 공휴일 리스트 (2025-2학기, 주말 제외)
 HOLIDAYS_2025_2 = [
     "2025-10-03", # 개천절
@@ -446,8 +451,12 @@ def get_session_attendances(session_id: int, current_user: models.User = Depends
         student = db.query(models.User).filter(models.User.id == enroll.user_id).first()
         att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=student.id).first()
         roster.append({
-            "student_id": student.id, "student_number": student.student_number, "student_name": student.name,
-            "email": student.email, "status": att.status if att else 0, "attendance_id": att.id if att else None
+            "student_id": student.id, 
+            "student_number": student.student_number, 
+            "student_name": student.name,
+            "email": student.email, 
+            "status": att.status if att else 0, 
+            "proof_file": att.proof_file if att else None # [NEW] 파일 경로
         })
     return roster
 
@@ -484,6 +493,88 @@ def update_session_date(session_id: int, date_data: schemas.SessionUpdate, curre
     db.commit()
     log_audit(db, current_user.id, "SESSION", session_id, "RESCHEDULE", str(date_data.session_date))
     return {"msg": "Updated"}
+
+@app.get("/instructor/courses/{course_id}/stack_report")
+def get_stack_report(course_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "INSTRUCTOR": raise HTTPException(403)
+    
+    # A. 주차별 출석률
+    sessions = db.query(models.ClassSession).filter_by(course_id=course_id).all()
+    weekly_rates = []
+    total_enroll = db.query(models.Enrollment).filter_by(course_id=course_id).count()
+    
+    for s in sessions:
+        if total_enroll == 0:
+            weekly_rates.append(0)
+            continue
+        # 출석(1) + 공결(4) 만 인정
+        attended = db.query(models.Attendance).filter(
+            models.Attendance.session_id == s.id, 
+            models.Attendance.status.in_([1, 4])
+        ).count()
+        weekly_rates.append(round((attended / total_enroll) * 100, 1))
+
+    # B. 공결 승인률
+    # status 4(승인) / (status 4 + status 5(신청중) + 반려된 케이스(보통 3으로 되돌림, 추적 어려우므로 여기선 4+5 기준))
+    total_req = db.query(models.Attendance).join(models.ClassSession).filter(
+        models.ClassSession.course_id == course_id,
+        models.Attendance.proof_file != None
+    ).count()
+    
+    approved = db.query(models.Attendance).join(models.ClassSession).filter(
+        models.ClassSession.course_id == course_id,
+        models.Attendance.status == 4
+    ).count()
+    
+    approval_rate = round((approved / total_req * 100), 1) if total_req > 0 else 0.0
+
+    # C. 학생별 스택 & 위험군 분석
+    students = db.query(models.User).join(models.Enrollment).filter(models.Enrollment.course_id == course_id).all()
+    risk_list = []
+    
+    for stu in students:
+        # 해당 강의의 모든 출석 기록 가져오기
+        atts = db.query(models.Attendance).join(models.ClassSession).filter(
+            models.ClassSession.course_id == course_id,
+            models.Attendance.student_id == stu.id
+        ).all()
+        
+        absent = 0
+        late = 0
+        consecutive_late = 0
+        max_consecutive_late = 0
+        
+        for a in atts:
+            if a.status == 3: absent += 1
+            if a.status == 2: 
+                late += 1
+                consecutive_late += 1
+            else:
+                consecutive_late = 0
+            max_consecutive_late = max(max_consecutive_late, consecutive_late)
+            
+        # [스택 계산] 지각 3회 -> 결석 1회 환산 (예시)
+        converted = absent + (late // 3)
+        
+        # [위험군 판별] 환산 결석 3회 이상이거나 연속 지각 2회 이상
+        is_risk = (converted >= 3) or (max_consecutive_late >= 2)
+        
+        risk_list.append({
+            "student_name": stu.name,
+            "total_absent": absent,
+            "total_late": late,
+            "converted_absent": converted,
+            "is_risk": is_risk
+        })
+        
+    # 위험군을 상위로 정렬
+    risk_list.sort(key=lambda x: x['converted_absent'], reverse=True)
+
+    return {
+        "weekly_attendance": weekly_rates,
+        "official_approval_rate": approval_rate,
+        "risk_group": risk_list
+    }
 
 # ==========================================
 # [4] 학생 영역 (Student) - 기존 유지
@@ -546,3 +637,25 @@ def get_course_report(course_id: int, current_user: models.User = Depends(auth.g
         rate = (attended_count / total_sessions * 100) if total_sessions > 0 else 0.0
         report_list.append(schemas.StudentReport(student_name=student.name, total_sessions=total_sessions, attended_count=attended_count, attendance_rate=round(rate, 1)))
     return schemas.CourseReportResponse(course_title=course.title, reports=report_list)
+
+@app.post("/student/sessions/{session_id}/excuse")
+def apply_excuse(session_id: int, file: UploadFile = File(...), current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    # 파일 저장
+    file_ext = file.filename.split(".")[-1]
+    file_name = f"{current_user.id}_{session_id}_{int(time.time())}.{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, file_name)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # DB 업데이트 (상태 5: 신청중)
+    att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=current_user.id).first()
+    if not att:
+        att = models.Attendance(session_id=session_id, student_id=current_user.id)
+        db.add(att)
+    
+    att.status = 5 # 공결 신청 상태
+    att.proof_file = file_name
+    db.commit()
+    
+    return {"msg": "Uploaded", "path": file_name}

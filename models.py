@@ -74,7 +74,13 @@ class Attendance(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    status = Column(Integer, default=0)
+    
+    # 0:미정, 1:출석, 2:지각, 3:결석, 4:공결(승인됨), 5:공결신청중
+    status = Column(Integer, default=0) 
+    
+    # [NEW] 공결 증빙 파일 경로
+    proof_file = Column(String(255), nullable=True)
+    
     checked_at = Column(DateTime, default=func.now())
     student = relationship("User", back_populates="attendances")
 

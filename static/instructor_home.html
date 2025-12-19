@@ -68,7 +68,7 @@
             courses.forEach(c => {
                 div.innerHTML += `
                     <div class="col-md-4">
-                        <div class="card h-100 shadow-sm" style="cursor:pointer;" onclick="loadSessions(${c.id}, '${c.title}')">
+                        <div class="card h-100 shadow-sm" style="cursor:pointer;" onclick="location.href='/static/instructor_course.html?id=${c.id}'">
                             <div class="card-body">
                                 <h5 class="card-title fw-bold">${c.title}</h5>
                                 <p class="card-text text-muted">${c.semester} | ${c.day_of_week}</p>
@@ -79,7 +79,7 @@
             });
         }
 
-        async function loadSessions(cid, title) {
+/*        async function loadSessions(cid, title) {
             document.getElementById('selectedCourseTitle').textContent = `[${title}] 주차별 관리`;
             document.getElementById('sessionArea').style.display = 'block';
             
@@ -123,7 +123,7 @@
             document.getElementById('oldDateDisplay').textContent = new Date(oldDate).toLocaleString();
             new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
         }
-
+*/
         async function submitReschedule() {
             const sid = document.getElementById('rescheduleSessionId').value;
             const newDate = document.getElementById('newSessionDate').value;

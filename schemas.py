@@ -80,6 +80,24 @@ class AttendanceUpdate(BaseModel):
     student_id: int
     status: int
 
+class AttendanceResponse(BaseModel):
+    student_id: int
+    student_name: str
+    status: int
+    proof_file: Optional[str] = None # [NEW]
+    
+class StackReportItem(BaseModel):
+    student_name: str
+    total_absent: int # 단순 결석 수
+    total_late: int   # 단순 지각 수
+    converted_absent: float # 지각 스택 포함 결석 환산 (예: 3지각=1결석)
+    is_risk: bool # 위험군 여부
+
+class CourseStackReport(BaseModel):
+    weekly_attendance: List[float] # 주차별 출석률
+    official_approval_rate: float  # 공결 승인률
+    risk_group: List[StackReportItem] # 위험군 리스트
+
 class SessionResponse(BaseModel):
     id: int
     week_number: int
