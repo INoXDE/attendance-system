@@ -31,10 +31,11 @@ class Course(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(100), nullable=False)
     semester = Column(String(20), nullable=False)
-    
-    # [NEW] 이수구분 (전공, 교양 등)
     course_type = Column(String(20), default="전공", nullable=False)
     
+    # [NEW] 강의 요일 (예: "Mon", "Tue" 또는 "월", "화")
+    day_of_week = Column(String(10), default="Mon", nullable=False)
+
     instructor_id = Column(Integer, ForeignKey("users.id"))
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
@@ -43,7 +44,7 @@ class Course(Base):
     sessions = relationship("ClassSession", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="course", cascade="all, delete-orphan")
 
-# --- 아래는 기존과 동일 ---
+# --- 이하 동일 ---
 class ClassSession(Base):
     __tablename__ = "class_sessions"
     id = Column(Integer, primary_key=True, index=True)

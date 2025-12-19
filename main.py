@@ -17,6 +17,19 @@ from sqlalchemy.exc import OperationalError
 from database import engine, get_db
 import models, schemas, auth
 
+# [NEW] 공휴일 리스트 (2025-2학기, 주말 제외)
+HOLIDAYS_2025_2 = [
+    "2025-10-03", # 개천절
+    "2025-10-06", # 추석 대체? (임시)
+    "2025-10-07", # 추석 대체? (임시)
+    "2025-10-08", # 임시
+    "2025-10-09", # 한글날
+    "2025-12-25"  # 성탄절
+]
+
+# [NEW] 요일 매핑 헬퍼
+DAY_MAP = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
+
 app = FastAPI(title="Inoxde Admin System")
 
 app.add_middleware(
@@ -222,22 +235,57 @@ def get_users(me: models.User = Depends(auth.get_current_user), db: Session = De
 @app.post("/admin/courses", response_model=schemas.CourseResponse)
 def create_course(c: schemas.CourseCreate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
-    # [NEW] course_type 추가
-    new_c = models.Course(title=c.title, semester=c.semester, course_type=c.course_type, instructor_id=me.id, department_id=c.department_id)
+    
+    # [NEW] 요일 정보 저장
+    new_c = models.Course(
+        title=c.title, 
+        semester=c.semester, 
+        course_type=c.course_type, 
+        day_of_week=c.day_of_week, 
+        instructor_id=me.id, 
+        department_id=c.department_id
+    )
     db.add(new_c)
     db.commit()
     db.refresh(new_c)
     
-    # 17주차 자동 생성
+    # [핵심] 17주차 자동 생성 (공휴일 & 요일 반영)
     if "2025" in c.semester:
-        start_date = datetime(2025, 9, 1, 9, 0, 0)
-        sessions = [models.ClassSession(course_id=new_c.id, week_number=i+1, session_date=start_date+timedelta(weeks=i)) for i in range(17)]
+        # 1. 개강일 기준 잡기 (2025-09-01 월요일)
+        base_start = datetime(2025, 9, 1, 9, 0, 0)
+        
+        # 2. 선택한 요일에 맞춰 첫 수업일 계산
+        target_weekday = DAY_MAP.get(c.day_of_week, 0) # 입력 없으면 월요일(0)
+        days_ahead = target_weekday - base_start.weekday()
+        if days_ahead < 0: days_ahead += 7
+        
+        first_session_date = base_start + timedelta(days=days_ahead)
+        
+        sessions = []
+        # 3. 17주차 생성 루프
+        for i in range(17):
+            current_date = first_session_date + timedelta(weeks=i)
+            date_str = current_date.strftime("%Y-%m-%d")
+            
+            # 공휴일 체크 (로그 출력)
+            if date_str in HOLIDAYS_2025_2:
+                print(f"⚠️ [공휴일 감지] {date_str} ({c.title}) - 휴강 처리 필요")
+                # 여기서 is_open=False로 두거나, 별도의 표식을 남길 수 있음.
+                # 현재는 날짜는 생성하되, 교수님이 '휴강'임을 알 수 있게 로그만 남김.
+            
+            sessions.append(models.ClassSession(
+                course_id=new_c.id, 
+                week_number=i+1, 
+                session_date=current_date
+            ))
+            
         db.add_all(sessions)
         db.commit()
         
-    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", c.title)
+    log_audit(db, me.id, "COURSE", new_c.id, "CREATE", f"{c.title} ({c.day_of_week})")
     return new_c
 
+# ... (update_course 등 나머지 함수에도 day_of_week 필드 처리 추가 필요) ...
 @app.put("/admin/courses/{course_id}", response_model=schemas.CourseResponse)
 def update_course(course_id: int, c: schemas.CourseUpdate, me: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if me.role != "ADMIN": raise HTTPException(403)
@@ -246,6 +294,7 @@ def update_course(course_id: int, c: schemas.CourseUpdate, me: models.User = Dep
     
     target.title = c.title
     target.course_type = c.course_type
+    target.day_of_week = c.day_of_week # [NEW]
     target.department_id = c.department_id
     if c.instructor_id: target.instructor_id = c.instructor_id
     

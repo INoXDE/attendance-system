@@ -1,4 +1,4 @@
-# schemas.py (부분 수정 및 추가)
+# schemas.py
 from pydantic import BaseModel
 from typing import Optional, List
 from enum import Enum
@@ -17,14 +17,13 @@ class DepartmentResponse(BaseModel):
     name: str
     class Config: from_attributes = True
 
-# [NEW] 사용자 수정용 스키마
 class UserUpdate(BaseModel):
     name: str
     email: str
     role: UserRole
     department_id: Optional[int] = None
     student_number: Optional[str] = None
-    password: Optional[str] = None # 비번 변경 시에만 값 존재
+    password: Optional[str] = None
 
 class UserCreate(BaseModel):
     email: str
@@ -43,10 +42,10 @@ class UserResponse(BaseModel):
     department_id: Optional[int] = None
     class Config: from_attributes = True
 
-# [NEW] 강의 수정용 스키마
 class CourseUpdate(BaseModel):
     title: str
     course_type: str
+    day_of_week: str # [NEW]
     department_id: Optional[int] = None
     instructor_id: Optional[int] = None
 
@@ -54,18 +53,20 @@ class CourseCreate(BaseModel):
     title: str
     semester: str
     department_id: Optional[int] = None
-    course_type: str = "전공" # [NEW] 기본값
+    course_type: str = "전공"
+    day_of_week: str = "Mon" # [NEW] 기본값 월요일
 
 class CourseResponse(BaseModel):
     id: int
     title: str
     semester: str
-    course_type: str # [NEW]
+    course_type: str
+    day_of_week: str # [NEW]
     instructor_id: int
     department_id: Optional[int] = None
     class Config: from_attributes = True
 
-# --- 기존 하단 모델들은 그대로 유지 ---
+# --- 이하 동일 ---
 class SessionCreate(BaseModel):
     week_number: int
     session_date: datetime
