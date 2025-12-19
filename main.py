@@ -357,7 +357,7 @@ def get_session_attendances(session_id: int, current_user: models.User = Depends
     return {"roster": roster, "vote_stat": {"Y": vote_y, "N": vote_n}}
 
 @app.patch("/instructor/sessions/{session_id}/attendances")
-def update_attendance_manual(session_id: int, update_data: AttendanceUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+def update_attendance_manual(session_id: int, update_data: schemas.AttendanceUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     if current_user.role != "INSTRUCTOR": raise HTTPException(status_code=403, detail="권한 없음")
     att = db.query(models.Attendance).filter_by(session_id=session_id, student_id=update_data.student_id).first()
     if att: att.status = update_data.status
